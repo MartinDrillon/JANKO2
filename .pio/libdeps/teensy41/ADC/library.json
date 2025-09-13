@@ -1,0 +1,28 @@
+{
+	"name": "ADC",
+	"version": "0.1.2",
+	"keywords": "ADC",
+	"description": "Arduino library for get fastly ADC value on AVR,s devices.",
+	"authors":
+	[
+		{
+		"name": "Rafael Reyes Carmona",
+		"email": "rafael.reyes.carmona@gmail.com",
+		"url": "https://github.com/RafaelReyesCarmona/",
+		"maintainer": true
+		}
+	],
+	"repository":
+	{
+		"type": "git",
+		"url": "https://github.com/RafaelReyesCarmona/ADC.git"
+	},
+	"frameworks": [
+	  "arduino"
+	],
+	"platforms": [
+	  "atmelavr",
+	  "lgt8f",
+	  "teensy"
+	]
+}
