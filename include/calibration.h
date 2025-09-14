@@ -1,53 +1,51 @@
+// New threshold API with manual override support
 #pragma once
-#include <Arduino.h>
+#include <stdint.h>
+#include "config.h"
 
-// === ADC Configuration ===
-// Référence ADC : 10 bits = 0..1023, Vref = 3.3V
+namespace Calib {
 
-// === Seuils globaux ===
-// ThresholdHigh = ADC(3.2V) - 30 → 3.2/3.3*1023 ≈ 993, donc ≈ 963
-static constexpr uint16_t kThresholdHigh = 880;
+// Auto-learned thresholds (from histogram/calibration)
+extern uint16_t thLowAuto[N_MUX][N_CH];
+extern uint16_t thHighAuto[N_MUX][N_CH];
 
-// Runtime threshold (will be updated by calibration from default value 650)
-extern uint16_t gThresholdLow;
+// Manual override thresholds and mask
+extern uint16_t thLowManual[N_MUX][N_CH];
+extern uint16_t thHighManual[N_MUX][N_CH];
+extern bool     thManualMask[N_MUX][N_CH];
 
-// Get current runtime threshold
-inline uint16_t getThresholdLow() {
-    return gThresholdLow;
-}
+// Core constants
+constexpr int  kMinSwingForValidity = 50;   // High >= Low + 50
+constexpr int  kReleaseDelta        = 50;   // Release = High - 50
+constexpr uint8_t kStableCount      = 1;    // consecutive samples
+constexpr uint16_t kMinDeltaADC     = 5;    // minimum delta for velocity
+constexpr float kSpeedMin           = 300.0f;
+constexpr float kSpeedMax           = 30000.0f;
+constexpr uint32_t kTrackingTimeoutUs = 1000000; // 1s
 
-// ThresholdRelease = ThresholdHigh - 50 → ≈ 913
-static constexpr uint16_t kThresholdRelease = 850;
+// Initialize all buffers to defaults
+void thresholdsInit(uint16_t lowDefault, uint16_t highDefault);
 
-// === Hystérésis et filtres ===
-// Nombre d'échantillons consécutifs pour valider un franchissement
-static constexpr uint8_t kStableCount = 1;
+// Auto setters (calibration)
+void setAutoLow (int m,int c,uint16_t v);
+void setAutoHigh(int m,int c,uint16_t v);
 
-// Delta ADC minimum pour ignorer micro-tremblements
-static constexpr uint16_t kMinDeltaADC = 5;
+// Manual setters (manual_thresholds)
+void setManualLow (int m,int c,uint16_t v);
+void setManualHigh(int m,int c,uint16_t v);
+void setManualMask(int m,int c,bool on);
 
-// === Vélocité (mapping vers MIDI 1..127) ===
-// Vitesse minimum en counts/s (sera mappée à vélocité MIDI 1)
-static constexpr float kSpeedMin = 300.0f;
+// Getters (always use these in engine)
+uint16_t getLow(int m,int c);
+uint16_t getHigh(int m,int c);
+uint16_t getRelease(int m,int c);
 
-// Vitesse maximum en counts/s (sera mappée à vélocité MIDI 127)
-static constexpr float kSpeedMax = 30000.0f;
-
-// === Timing ===
-// Timeout TRACKING maximum en microsecondes (1000ms)
-static constexpr uint32_t kTrackingTimeoutUs = 1000000;
-
-// === Fonctions utilitaires ===
-inline uint8_t calculateVelocity(float speed) {
-    // Mapping linéaire speed → [1..127]
+// Velocity utility (speed already computed) - optional
+inline uint8_t mapSpeedToVelocity(float speed) {
     if (speed <= kSpeedMin) return 1;
     if (speed >= kSpeedMax) return 127;
-    
     float normalized = (speed - kSpeedMin) / (kSpeedMax - kSpeedMin);
     return 1 + static_cast<uint8_t>(normalized * 126.0f);
 }
 
-inline bool isValidDelta(uint16_t delta_adc) {
-    return delta_adc >= kMinDeltaADC;
-}
-static constexpr uint16_t kTargetSampleRateHz = 1000; // per key
+} // namespace Calib

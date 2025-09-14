@@ -1,4 +1,5 @@
 #include "velocity_engine.h"
+#include "calibration.h"
 
 // === Global State Arrays Definition ===
 KeyData g_keys[N_MUX][N_CH];
@@ -18,9 +19,9 @@ void VelocityEngine::initialize() {
     memset(&g_acquisition, 0, sizeof(g_acquisition));
     
     Serial.println("VelocityEngine: Initialized for 4x16 MUX configuration");
-    Serial.print("Thresholds: Low="); Serial.print(getThresholdLow());
-    Serial.print(", High="); Serial.print(kThresholdHigh);
-    Serial.print(", Release="); Serial.println(kThresholdRelease);
+    Serial.print("Thresholds: Low(sample M0C0)="); Serial.print(Calib::getLow(0,0));
+    Serial.print(", High="); Serial.print(Calib::getHigh(0,0));
+    Serial.print(", Release="); Serial.println(Calib::getRelease(0,0));
 }
 
 void VelocityEngine::processKey(uint8_t mux, uint8_t channel, 
@@ -68,9 +69,9 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
 
 void VelocityEngine::handleIdle(KeyData& key, uint16_t adc, uint32_t t_us, 
                                uint8_t mux, uint8_t channel) {
-    if (adc > getThresholdLow()) {
+    if (adc > Calib::getLow(mux, channel)) {
         key.stable_up_count++;
-        if (key.stable_up_count >= kStableCount) {
+    if (key.stable_up_count >= Calib::kStableCount) {
             // START TRACKING
             key.state = KeyState::TRACKING;
             key.adc_start = adc;
@@ -86,22 +87,22 @@ void VelocityEngine::handleIdle(KeyData& key, uint16_t adc, uint32_t t_us,
 void VelocityEngine::handleTracking(KeyData& key, uint16_t adc, uint32_t t_us, 
                                    uint8_t mux, uint8_t channel) {
     // Check timeout
-    if (t_us - key.t_start_us > kTrackingTimeoutUs) {
+    if (t_us - key.t_start_us > Calib::kTrackingTimeoutUs) {
         key.false_starts++;
         resetKey(key); // too slow, abort
         return;
     }
     
-    if (adc < getThresholdLow()) {
+    if (adc < Calib::getLow(mux, channel)) {
         // FALSE START - fell below threshold before hitting high
         key.false_starts++;
         resetKey(key);
         return;
     }
     
-    if (adc >= kThresholdHigh) {
+    if (adc >= Calib::getHigh(mux, channel)) {
         key.stable_up_count++;
-        if (key.stable_up_count >= kStableCount) {
+        if (key.stable_up_count >= Calib::kStableCount) {
             // NOTE TRIGGERED!
             int8_t note = effectiveNote(mux, channel);
             
@@ -111,7 +112,7 @@ void VelocityEngine::handleTracking(KeyData& key, uint16_t adc, uint32_t t_us,
                 return;
             }
             
-            uint16_t delta_adc = max(adc - key.adc_start, kMinDeltaADC);
+            uint16_t delta_adc = max(adc - key.adc_start, (uint16_t)Calib::kMinDeltaADC);
             uint32_t delta_t = t_us - key.t_start_us;
             uint8_t velocity = calculateVelocity(delta_adc, delta_t);
             
@@ -130,9 +131,9 @@ void VelocityEngine::handleTracking(KeyData& key, uint16_t adc, uint32_t t_us,
 
 void VelocityEngine::handleHeld(KeyData& key, uint16_t adc, uint32_t t_us,
                                uint8_t mux, uint8_t channel) {
-    if (adc < kThresholdRelease) {
+    if (adc < Calib::getRelease(mux, channel)) {
         key.stable_down_count++;
-        if (key.stable_down_count >= kStableCount) {
+        if (key.stable_down_count >= Calib::kStableCount) {
             // NOTE RELEASED
             sendNoteOff(key.current_note, mux, channel);
             key.note_on_sent = false;
@@ -149,9 +150,9 @@ void VelocityEngine::handleHeld(KeyData& key, uint16_t adc, uint32_t t_us,
 void VelocityEngine::handleRearmed(KeyData& key, uint16_t adc, uint32_t t_us,
                                   uint8_t mux, uint8_t channel) {
     // Ready for re-trigger without going back to ThresholdLow
-    if (adc > getThresholdLow()) {
+    if (adc > Calib::getLow(mux, channel)) {
         key.stable_up_count++;
-        if (key.stable_up_count >= kStableCount) {
+        if (key.stable_up_count >= Calib::kStableCount) {
             // Re-trigger detected
             key.state = KeyState::TRACKING;
             key.adc_start = adc;
@@ -160,7 +161,7 @@ void VelocityEngine::handleRearmed(KeyData& key, uint16_t adc, uint32_t t_us,
         }
     } else {
         key.stable_up_count = 0;
-        if (adc < getThresholdLow() - 20) { // small hysteresis
+    if (adc < Calib::getLow(mux, channel) - 20) { // small hysteresis
             // Full release - back to IDLE
             key.state = KeyState::IDLE;
         }
@@ -172,11 +173,7 @@ uint8_t VelocityEngine::calculateVelocity(uint16_t delta_adc, uint32_t delta_t_u
     float speed = (float)delta_adc / ((float)delta_t_us / 1000000.0f);
     
     // Linear mapping to MIDI range [1-127]
-    float normalized = (speed - kSpeedMin) / (kSpeedMax - kSpeedMin);
-    normalized = constrain(normalized, 0.0f, 1.0f);
-    
-    uint8_t velocity = 1 + (uint8_t)(normalized * 126.0f);
-    return constrain(velocity, 1, 127);
+    return Calib::mapSpeedToVelocity(speed);
 }
 
 void VelocityEngine::sendNoteOn(uint8_t note, uint8_t velocity, uint8_t mux, uint8_t channel) {

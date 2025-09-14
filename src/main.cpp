@@ -228,6 +228,9 @@ void setup() {
     initializeDualMux();
     setMuxChannel(currentChannel);
     lastScanUs = micros();
+
+    // Initialize threshold buffers (baseline auto values)
+    Calib::thresholdsInit(650, 880);
     
     // Initialize LEDs
     simpleLedsInit();
@@ -254,9 +257,12 @@ void setup() {
             Serial.println("Sync call order: startSync(ADC1pin, ADC0pin)");
         #endif
 
-            // Optional: apply manual thresholds override (disabled by default).
-            // Uncomment to enable global manual thresholds table (all {720,880}).
-            // ManualThresholds::apply(true); // enable override
+    // Apply manual thresholds immediately (can be delayed until after calibration if desired)
+    ManualThresholds::apply(true);
+    // ManualThresholds::print(); // uncomment to inspect table
+    Serial.printf("Threshold sample M0C6 L/H/R=%u/%u/%u\n", Calib::getLow(0,6), Calib::getHigh(0,6), Calib::getRelease(0,6));
+    Serial.printf("Threshold sample M3C11 L/H/R=%u/%u/%u\n", Calib::getLow(3,11), Calib::getHigh(3,11), Calib::getRelease(3,11));
+    Serial.printf("Threshold sample M7C4 L/H/R=%u/%u/%u\n", Calib::getLow(7,4), Calib::getHigh(7,4), Calib::getRelease(7,4));
     
     // Show current note mapping
     printNoteMap();
@@ -317,9 +323,13 @@ uint16_t calculateMedian() {
 void finishCalibration() {
     // Calculate median from histogram
     uint16_t median = calculateMedian();
-    
-    // Update runtime threshold
-    gThresholdLow = median;
+    // Update AUTO low thresholds baseline with median (uniform for now)
+    for(int m=0;m<N_MUX;++m){
+        for(int c=0;c<N_CH;++c){
+            Calib::setAutoLow(m,c, median);
+            // keep existing auto high (initialized) or recompute relative if needed
+        }
+    }
     
     // Turn off calibration LEDs
     setCalibrationLeds(false);
