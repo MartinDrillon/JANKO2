@@ -28,10 +28,10 @@ static constexpr uint16_t kMinDeltaADC = 5;
 
 // === Vélocité (mapping vers MIDI 1..127) ===
 // Vitesse minimum en counts/s (sera mappée à vélocité MIDI 1)
-static constexpr float kSpeedMin = 100.0f;
+static constexpr float kSpeedMin = 300.0f;
 
 // Vitesse maximum en counts/s (sera mappée à vélocité MIDI 127)
-static constexpr float kSpeedMax = 5000.0f;
+static constexpr float kSpeedMax = 30000.0f;
 
 // === Timing ===
 // Timeout TRACKING maximum en microsecondes (1000ms)

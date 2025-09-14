@@ -56,7 +56,7 @@ static constexpr uint8_t kAdcResolution = 10; // 10-bit ADC (0-1023)
 static constexpr uint8_t kMidiChannel = 1; // MIDI channel (1-16)
 
 // Scanning Configuration - Target 2 synchronized pairs optimization
-static constexpr uint32_t kScanIntervalMicros = 50;  // 50µs per channel (realistic for 4 sync pairs)
-static constexpr uint32_t kSettleMicros = 10;        // 10µs settling for op-amp followers
-static constexpr uint32_t kFrameTargetHz = 1500;     // 1.5kHz frame rate target (realistic) 
+static constexpr uint32_t kScanIntervalMicros = 3;  // 3µs per channel (optimized for speed)
+static constexpr uint32_t kSettleMicros = 1;         // 1µs settling for op-amp followers (reduced)
+static constexpr uint32_t kFrameTargetHz = 3125;     // 3.125kHz frame rate target (optimized) 
 
