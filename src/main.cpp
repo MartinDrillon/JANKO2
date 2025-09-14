@@ -9,6 +9,49 @@
 #include "note_map.h"
 #include "key_state.h"
 
+// === Fast MUX Channel Switching LUT ===
+// Pre-calculated GPIO states for each channel (0-15)
+struct ChannelGPIO {
+    uint8_t groupA_S0, groupA_S1, groupA_S2, groupA_S3;
+    uint8_t groupB_S0, groupB_S1, groupB_S2, groupB_S3;
+};
+
+// LUT for fast channel switching (avoids bit operations in loop)
+static constexpr ChannelGPIO CHANNEL_LUT[16] = {
+    // Ch0: 0000
+    {LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW},
+    // Ch1: 0001  
+    {HIGH, LOW, LOW, LOW, HIGH, LOW, LOW, LOW},
+    // Ch2: 0010
+    {LOW, HIGH, LOW, LOW, LOW, HIGH, LOW, LOW},
+    // Ch3: 0011
+    {HIGH, HIGH, LOW, LOW, HIGH, HIGH, LOW, LOW},
+    // Ch4: 0100
+    {LOW, LOW, HIGH, LOW, LOW, LOW, HIGH, LOW},
+    // Ch5: 0101
+    {HIGH, LOW, HIGH, LOW, HIGH, LOW, HIGH, LOW},
+    // Ch6: 0110
+    {LOW, HIGH, HIGH, LOW, LOW, HIGH, HIGH, LOW},
+    // Ch7: 0111
+    {HIGH, HIGH, HIGH, LOW, HIGH, HIGH, HIGH, LOW},
+    // Ch8: 1000
+    {LOW, LOW, LOW, HIGH, LOW, LOW, LOW, HIGH},
+    // Ch9: 1001
+    {HIGH, LOW, LOW, HIGH, HIGH, LOW, LOW, HIGH},
+    // Ch10: 1010
+    {LOW, HIGH, LOW, HIGH, LOW, HIGH, LOW, HIGH},
+    // Ch11: 1011
+    {HIGH, HIGH, LOW, HIGH, HIGH, HIGH, LOW, HIGH},
+    // Ch12: 1100
+    {LOW, LOW, HIGH, HIGH, LOW, LOW, HIGH, HIGH},
+    // Ch13: 1101
+    {HIGH, LOW, HIGH, HIGH, HIGH, LOW, HIGH, HIGH},
+    // Ch14: 1110
+    {LOW, HIGH, HIGH, HIGH, LOW, HIGH, HIGH, HIGH},
+    // Ch15: 1111
+    {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH}
+};
+
 // === USB MIDI is built-in on Teensy ===
 // No additional setup required
 
@@ -16,9 +59,53 @@
 uint8_t currentChannel = 0;
 uint32_t lastScanUs = 0;
 
+// === Target 2 Performance Instrumentation ===
+struct PerformanceMetrics {
+    uint32_t frameCount = 0;
+    
+    // Detailed timing breakdown
+    uint32_t totalSLinesTime = 0;
+    uint32_t totalSettleTime = 0;
+    uint32_t totalConversionTime = 0;
+    uint32_t totalProcessingTime = 0;
+    
+    // Min/Max tracking
+    uint32_t minScanTime = UINT32_MAX;
+    uint32_t maxScanTime = 0;
+    uint32_t avgScanTime = 0;
+    
+    uint32_t lastReportMs = 0;
+    
+    void reset() {
+        frameCount = 0;
+        totalSLinesTime = totalSettleTime = totalConversionTime = totalProcessingTime = 0;
+        minScanTime = UINT32_MAX;
+        maxScanTime = 0;
+    }
+    
+    void addFrame(uint32_t slines, uint32_t settle, uint32_t conversion, uint32_t processing) {
+        frameCount++;
+        totalSLinesTime += slines;
+        totalSettleTime += settle;
+        totalConversionTime += conversion;
+        totalProcessingTime += processing;
+        
+        uint32_t totalTime = slines + settle + conversion + processing;
+        minScanTime = min(minScanTime, totalTime);
+        maxScanTime = max(maxScanTime, totalTime);
+        avgScanTime = (totalSLinesTime + totalSettleTime + totalConversionTime + totalProcessingTime) / frameCount;
+    }
+};
+
+static PerformanceMetrics g_perfMetrics;
+
+// === Target 2 Performance Monitoring ===
+constexpr uint32_t PERF_REPORT_INTERVAL_MS = 3000;     // Report every 3s
+constexpr uint32_t FRAME_SAMPLE_SIZE = 100;            // Sample over 100 frames (faster report)
+
 // Debug output control
 uint32_t lastDebugMs = 0;
-constexpr uint32_t DEBUG_INTERVAL_MS = 100;     // Debug every 100ms
+constexpr uint32_t DEBUG_INTERVAL_MS = 1000;    // Debug every 1s (faster monitoring)
 constexpr uint8_t MONITORED_CHANNEL = 6;        // Channel to monitor
 constexpr uint8_t MONITORED_MUX_A = 2;          // Group A MUX to monitor
 constexpr uint8_t MONITORED_MUX_B = 6;          // Group B MUX to monitor
@@ -27,18 +114,21 @@ constexpr uint8_t MONITORED_MUX_B = 6;          // Group B MUX to monitor
 void handleSerialCommands();
 
 // --- Dual MUX Control Functions ---
+// --- Ultra-Fast MUX Channel Setting with LUT ---
 void setMuxChannel(uint8_t channel) {
-    // Set Group A (MUX 0-3) S0-S3 lines
-    digitalWriteFast(kMuxGroupA_S0, (channel & 0x01) ? HIGH : LOW);
-    digitalWriteFast(kMuxGroupA_S1, (channel & 0x02) ? HIGH : LOW);
-    digitalWriteFast(kMuxGroupA_S2, (channel & 0x04) ? HIGH : LOW);
-    digitalWriteFast(kMuxGroupA_S3, (channel & 0x08) ? HIGH : LOW);
+    const ChannelGPIO& gpio = CHANNEL_LUT[channel];
     
-    // Set Group B (MUX 4-7) S0-S3 lines  
-    digitalWriteFast(kMuxGroupB_S0, (channel & 0x01) ? HIGH : LOW);
-    digitalWriteFast(kMuxGroupB_S1, (channel & 0x02) ? HIGH : LOW);
-    digitalWriteFast(kMuxGroupB_S2, (channel & 0x04) ? HIGH : LOW);
-    digitalWriteFast(kMuxGroupB_S3, (channel & 0x08) ? HIGH : LOW);
+    // Set Group A (S0-S3) with pre-calculated values
+    digitalWriteFast(kMuxGroupA_S0, gpio.groupA_S0);
+    digitalWriteFast(kMuxGroupA_S1, gpio.groupA_S1);
+    digitalWriteFast(kMuxGroupA_S2, gpio.groupA_S2);
+    digitalWriteFast(kMuxGroupA_S3, gpio.groupA_S3);
+    
+    // Set Group B (S0-S3) with pre-calculated values
+    digitalWriteFast(kMuxGroupB_S0, gpio.groupB_S0);
+    digitalWriteFast(kMuxGroupB_S1, gpio.groupB_S1);
+    digitalWriteFast(kMuxGroupB_S2, gpio.groupB_S2);
+    digitalWriteFast(kMuxGroupB_S3, gpio.groupB_S3);
 }
 
 void initializeDualMux() {
@@ -54,44 +144,60 @@ void initializeDualMux() {
     pinMode(kMuxGroupB_S2, OUTPUT);
     pinMode(kMuxGroupB_S3, OUTPUT);
     
+    // Standard ADC configuration for now (we'll optimize with ADC lib later)
     analogReadResolution(kAdcResolution);
+    
+    Serial.println("Target 2: High-speed MUX with LUT optimization ready");
 }
 
-// --- Optimized Channel Scanning with 4 Synchronized Pairs ---
+// --- Target 2: Optimized Scanning with LUT and Performance Instrumentation ---
 void scanChannelDualADC(uint8_t channel) {
-    // Set MUX channel for both groups simultaneously
+    uint32_t startTime = micros();
+    
+    // (a) S-lines timing - ultra-fast with LUT
+    uint32_t slinesStart = micros();
     setMuxChannel(channel);
+    uint32_t slinesTime = micros() - slinesStart;
     
-    // Single settling time for both groups
+    // (b) Settle timing
+    uint32_t settleStart = micros();
     delayMicroseconds(kSettleMicros);
+    uint32_t settleTime = micros() - settleStart;
     
-    // Get timestamp for this scan cycle
+    // Get timestamp for velocity processing
     uint32_t timestamp_us = micros();
     
-    // 4 synchronized pairs of ADC reads (Group A + Group B in parallel)
-    // Pair 1: MUX0 (ADC1) + MUX4 (ADC0)
-    uint16_t adc0 = analogRead(MUX_ADC_PINS[0]); // MUX0 - pin 41
-    uint16_t adc4 = analogRead(MUX_ADC_PINS[4]); // MUX4 - pin 20
-    VelocityEngine::processKey(0, channel, adc0, timestamp_us);
-    VelocityEngine::processKey(4, channel, adc4, timestamp_us);
+    // (c) Conversion timing - 4 optimized pairs (using fast analogRead for now)
+    uint32_t conversionStart = micros();
+    uint16_t values[8];
     
-    // Pair 2: MUX1 (ADC1) + MUX5 (ADC0)  
-    uint16_t adc1 = analogRead(MUX_ADC_PINS[1]); // MUX1 - pin 40
-    uint16_t adc5 = analogRead(MUX_ADC_PINS[5]); // MUX5 - pin 21
-    VelocityEngine::processKey(1, channel, adc1, timestamp_us);
-    VelocityEngine::processKey(5, channel, adc5, timestamp_us);
+    // Pair 1: MUX0 (pin 41) + MUX4 (pin 20)
+    values[0] = analogRead(PAIR_ADC1_PINS[0]); // MUX0 
+    values[4] = analogRead(PAIR_ADC0_PINS[0]); // MUX4
     
-    // Pair 3: MUX2 (ADC1) + MUX6 (ADC0)
-    uint16_t adc2 = analogRead(MUX_ADC_PINS[2]); // MUX2 - pin 39  
-    uint16_t adc6 = analogRead(MUX_ADC_PINS[6]); // MUX6 - pin 22
-    VelocityEngine::processKey(2, channel, adc2, timestamp_us);
-    VelocityEngine::processKey(6, channel, adc6, timestamp_us);
+    // Pair 2: MUX1 (pin 40) + MUX5 (pin 21)
+    values[1] = analogRead(PAIR_ADC1_PINS[1]); // MUX1
+    values[5] = analogRead(PAIR_ADC0_PINS[1]); // MUX5
     
-    // Pair 4: MUX3 (ADC1) + MUX7 (ADC0)
-    uint16_t adc3 = analogRead(MUX_ADC_PINS[3]); // MUX3 - pin 38
-    uint16_t adc7 = analogRead(MUX_ADC_PINS[7]); // MUX7 - pin 23  
-    VelocityEngine::processKey(3, channel, adc3, timestamp_us);
-    VelocityEngine::processKey(7, channel, adc7, timestamp_us);
+    // Pair 3: MUX2 (pin 39) + MUX6 (pin 22)
+    values[2] = analogRead(PAIR_ADC1_PINS[2]); // MUX2
+    values[6] = analogRead(PAIR_ADC0_PINS[2]); // MUX6
+    
+    // Pair 4: MUX3 (pin 38) + MUX7 (pin 23)
+    values[3] = analogRead(PAIR_ADC1_PINS[3]); // MUX3
+    values[7] = analogRead(PAIR_ADC0_PINS[3]); // MUX7
+    
+    uint32_t conversionTime = micros() - conversionStart;
+    
+    // (d) Processing timing - batch process all 8 keys
+    uint32_t processingStart = micros();
+    for (uint8_t mux = 0; mux < 8; mux++) {
+        VelocityEngine::processKey(mux, channel, values[mux], timestamp_us);
+    }
+    uint32_t processingTime = micros() - processingStart;
+    
+    // Add to performance metrics
+    g_perfMetrics.addFrame(slinesTime, settleTime, conversionTime, processingTime);
 }
 
 // --- Debug Functions ---
@@ -174,11 +280,11 @@ void loop() {
     const uint32_t nowUs = micros();
     const uint32_t nowMs = millis();
 
-    // === Main scanning loop - Dual ADC parallel approach ===
+    // === Main scanning loop - Target 2 synchronized pairs ===
     if (nowUs - lastScanUs >= kScanIntervalMicros) {
         lastScanUs = nowUs;
         
-        // Scan current channel across both groups (1 settle + 4 pairs)
+        // Scan current channel with detailed performance instrumentation
         scanChannelDualADC(currentChannel);
         
         // Advance to next channel
@@ -188,6 +294,32 @@ void loop() {
         if (currentChannel == 0) {
             g_acquisition.swapBuffers();
         }
+    }
+
+    // === Target 2 Performance Monitoring ===
+    if ((g_perfMetrics.frameCount >= FRAME_SAMPLE_SIZE) || 
+        (nowMs - g_perfMetrics.lastReportMs >= PERF_REPORT_INTERVAL_MS)) {
+        
+        if (g_perfMetrics.frameCount > 0) {
+            float frameRate = (g_perfMetrics.frameCount * 1000.0f) / PERF_REPORT_INTERVAL_MS;
+            float keyRate = frameRate * 128.0f; // 128 keys per frame
+            
+            Serial.printf("=== TARGET 2 PERFORMANCE REPORT ===\n");
+            Serial.printf("Frame Rate: %.1f Hz (%.1f keys/s)\n", frameRate, keyRate);
+            Serial.printf("Scan Times (µs): min=%lu, avg=%lu, max=%lu\n", 
+                         g_perfMetrics.minScanTime, g_perfMetrics.avgScanTime, g_perfMetrics.maxScanTime);
+            Serial.printf("Breakdown: S-lines=%.1f, Settle=%.1f, Conv=%.1f, Proc=%.1f µs\n",
+                         g_perfMetrics.totalSLinesTime / (float)g_perfMetrics.frameCount,
+                         g_perfMetrics.totalSettleTime / (float)g_perfMetrics.frameCount,
+                         g_perfMetrics.totalConversionTime / (float)g_perfMetrics.frameCount,
+                         g_perfMetrics.totalProcessingTime / (float)g_perfMetrics.frameCount);
+            Serial.printf("Total improvement vs Target 1: %.1fx\n", 
+                         242.0f / g_perfMetrics.avgScanTime); // 242µs was Target 1 baseline
+            Serial.println("=====================================");
+        }
+        
+        g_perfMetrics.reset();
+        g_perfMetrics.lastReportMs = nowMs;
     }
 
     // === Handle other tasks ===

@@ -25,6 +25,10 @@ static constexpr int MUX_ADC_PINS[N_MUX] = {
     23   // MUX7 → pin 23 (ADC0_9 / A9)
 };
 
+// Synchronized ADC pairs for parallel reading (Target 2 optimization)
+static constexpr int PAIR_ADC1_PINS[4] = {41, 40, 39, 38}; // Group A
+static constexpr int PAIR_ADC0_PINS[4] = {20, 21, 22, 23}; // Group B
+
 // Group configuration for dual ADC scanning
 static constexpr int N_GROUPS = 2;
 static constexpr int MUX_PER_GROUP = 4;
@@ -51,7 +55,8 @@ static constexpr uint8_t kAdcResolution = 10; // 10-bit ADC (0-1023)
 // MIDI Configuration
 static constexpr uint8_t kMidiChannel = 1; // MIDI channel (1-16)
 
-// Scanning Configuration - optimized for dual ADC
-static constexpr uint32_t kScanIntervalMicros = 80;  // 80µs per channel (fast)
-static constexpr uint32_t kSettleMicros = 10;       // Single settling time per channel 
+// Scanning Configuration - Target 2 synchronized pairs optimization
+static constexpr uint32_t kScanIntervalMicros = 50;  // 50µs per channel (realistic for 4 sync pairs)
+static constexpr uint32_t kSettleMicros = 10;        // 10µs settling for op-amp followers
+static constexpr uint32_t kFrameTargetHz = 1500;     // 1.5kHz frame rate target (realistic) 
 
