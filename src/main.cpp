@@ -2,12 +2,16 @@
 // True parallel scanning: ADC0 + ADC1 simultaneous reads
 
 #include <Arduino.h>
+#include <ADC.h>
 #include "config.h"
 #include "simple_leds.h"
 #include "velocity_engine.h"
 #include "calibration.h"
 #include "note_map.h"
 #include "key_state.h"
+
+// === ADC Instance ===
+static ADC gAdc;
 
 // === Fast MUX Channel Switching LUT ===
 // Pre-calculated GPIO states for each channel (0-15)
@@ -108,38 +112,73 @@ void initializeDualMux() {
     
     // Standard ADC configuration for now (we'll optimize with ADC lib later)
     analogReadResolution(kAdcResolution);
+    
+    // === ADC Library Configuration ===
+    // Calibrate both ADCs
+    gAdc.adc0->calibrate();
+    gAdc.adc1->calibrate();
+    
+    // Set to no averaging for maximum speed
+    gAdc.adc0->setAveraging(1);
+    gAdc.adc1->setAveraging(1);
+    
+    // Set maximum conversion speed
+    gAdc.adc0->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_HIGH_SPEED);
+    gAdc.adc1->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_HIGH_SPEED);
+    
+    // Set maximum sampling speed
+    gAdc.adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_HIGH_SPEED);
+    gAdc.adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_HIGH_SPEED);
+    
+    Serial.println("ADC library initialized with VERY_HIGH_SPEED configuration");
 }
 
-// --- Optimized Scanning with LUT ---
+// --- Optimized Scanning with LUT and Synchronized ADC ---
 void scanChannelDualADC(uint8_t channel) {
-    // Set MUX channel with ultra-fast LUT
+    // Optional debug channel freeze
+    #if (DEBUG_FREEZE_CHANNEL >= 0)
+    channel = DEBUG_FREEZE_CHANNEL % N_CH;
+    #endif
+
+    // Set MUX channel with ultra-fast LUT (both groups simultaneously)
     setMuxChannel(channel);
-    
-    // Allow MUX to settle
+
+    // Allow MUX outputs + sample/hold buffers to settle
     delayMicroseconds(kSettleMicros);
-    
-    // Get timestamp for velocity processing
+
+    // Timestamp as close as possible to first acquisition (pre-loop)
     uint32_t timestamp_us = micros();
-    
-    // Read 4 optimized pairs (using fast analogRead)
-    uint16_t values[8];
-    
-    // Pair 1: MUX0 (pin 41) + MUX4 (pin 20)
-    values[0] = analogRead(PAIR_ADC1_PINS[0]); // MUX0 
-    values[4] = analogRead(PAIR_ADC0_PINS[0]); // MUX4
-    
-    // Pair 2: MUX1 (pin 40) + MUX5 (pin 21)
-    values[1] = analogRead(PAIR_ADC1_PINS[1]); // MUX1
-    values[5] = analogRead(PAIR_ADC0_PINS[1]); // MUX5
-    
-    // Pair 3: MUX2 (pin 39) + MUX6 (pin 22)
-    values[2] = analogRead(PAIR_ADC1_PINS[2]); // MUX2
-    values[6] = analogRead(PAIR_ADC0_PINS[2]); // MUX6
-    
-    // Pair 4: MUX3 (pin 38) + MUX7 (pin 23)
-    values[3] = analogRead(PAIR_ADC1_PINS[3]); // MUX3
-    values[7] = analogRead(PAIR_ADC0_PINS[3]); // MUX7
-    
+
+        // Perform four synchronized dual-ADC reads (must do all 4 to avoid cloned values)
+        // EXACT SPECIFIED IMPLEMENTATION with selectable order and per-pair debug
+        uint16_t values[8];
+        for (int i = 0; i < 4; ++i) {
+            #if ADC_SYNC_ORDER == 0
+                // Ordre (ADC0, ADC1) — souvent attendu par pedvide sur T4.1
+                const int pin_adc0 = MUX_ADC_PINS[4 + i];  // 20,21,22,23
+                const int pin_adc1 = MUX_ADC_PINS[i];      // 41,40,39,38
+                gAdc.startSynchronizedSingleRead(pin_adc0, pin_adc1);
+                ADC::Sync_result r = gAdc.readSynchronizedSingle();
+                values[i]     = r.result_adc1;  // MUX i     → ADC1 → pins 41,40,39,38
+                values[4 + i] = r.result_adc0;  // MUX 4+i   → ADC0 → pins 20,21,22,23
+            #else
+                // Ordre (ADC1, ADC0)
+                const int pin_adc1 = MUX_ADC_PINS[i];      // 41,40,39,38
+                const int pin_adc0 = MUX_ADC_PINS[4 + i];  // 20,21,22,23
+                gAdc.startSynchronizedSingleRead(pin_adc1, pin_adc0);
+                ADC::Sync_result r = gAdc.readSynchronizedSingle();
+                values[i]     = r.result_adc1;  // MUX i     → ADC1
+                values[4 + i] = r.result_adc0;  // MUX 4+i   → ADC0
+            #endif
+
+            #if DEBUG_PRINT_PAIRS
+                Serial.printf("CH%02u P%u: ADC1(%d)=%4u | ADC0(%d)=%4u\n",
+                                            channel, i,
+                                            MUX_ADC_PINS[i],     values[i],
+                                            MUX_ADC_PINS[4 + i], values[4 + i]);
+            #endif
+        }
+
     // === Calibration data collection ===
     if (gState == RunState::CALIBRATING) {
         // Collect all ADC values in histogram for median calculation
@@ -158,11 +197,23 @@ void scanChannelDualADC(uint8_t channel) {
             VelocityEngine::processKey(mux, channel, values[mux], timestamp_us);
         }
     } else {
-        // During calibration, still update working values for continuity but no MIDI processing
         for (uint8_t mux = 0; mux < 8; mux++) {
             g_acquisition.workingValues[mux][channel] = values[mux];
         }
     }
+
+    // Optional debug print
+    #if DEBUG_PRINT_VALUES
+    Serial.print("CH"); Serial.print(channel); Serial.print(" ADC: ");
+    Serial.print("M0="); Serial.print(values[0]); Serial.print(' ');
+    Serial.print("M1="); Serial.print(values[1]); Serial.print(' ');
+    Serial.print("M2="); Serial.print(values[2]); Serial.print(' ');
+    Serial.print("M3="); Serial.print(values[3]); Serial.print(' ');
+    Serial.print("M4="); Serial.print(values[4]); Serial.print(' ');
+    Serial.print("M5="); Serial.print(values[5]); Serial.print(' ');
+    Serial.print("M6="); Serial.print(values[6]); Serial.print(' ');
+    Serial.print("M7="); Serial.println(values[7]);
+    #endif
 }
 
 
@@ -189,6 +240,18 @@ void setup() {
     VelocityEngine::initialize();
     
     Serial.println("=== Ready for 128-key velocity detection ===");
+    
+        // === ADC Pin Mapping Sanity Check (dynamic) ===
+        Serial.printf("Pairs: ");
+        for (int i=0;i<4;++i){
+            Serial.printf("(ADC1:%d//ADC0:%d) ", MUX_ADC_PINS[i], MUX_ADC_PINS[4+i]);
+        }
+        Serial.println();
+        #if ADC_SYNC_ORDER==0
+            Serial.println("Sync call order: startSync(ADC0pin, ADC1pin)");
+        #else
+            Serial.println("Sync call order: startSync(ADC1pin, ADC0pin)");
+        #endif
     
     // Show current note mapping
     printNoteMap();

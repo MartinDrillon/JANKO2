@@ -1,5 +1,5 @@
-fortyseveneffects/MIDI Library @ ^5
 thomasfredericks/Bounce2 @ ^2
-adafruit/Adafruit NeoPixel @ ^1
-ADC
 USBHost_t36
+adafruit/Adafruit NeoPixel @ ^1
+https://github.com/pedvide/ADC.git
+fortyseveneffects/MIDI Library @ ^5
