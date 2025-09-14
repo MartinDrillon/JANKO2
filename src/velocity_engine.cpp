@@ -1,19 +1,23 @@
 #include "velocity_engine.h"
 
-// === Global Key State Array Definition ===
-KeyData g_keys[kMaxMux][kMaxChannels];
+// === Global State Arrays Definition ===
+KeyData g_keys[N_MUX][N_CH];
+AcquisitionData g_acquisition;
 
 // === VelocityEngine Implementation ===
 
 void VelocityEngine::initialize() {
     // Initialize all keys to IDLE state
-    for (uint8_t mux = 0; mux < kMaxMux; mux++) {
-        for (uint8_t channel = 0; channel < kMaxChannels; channel++) {
+    for (uint8_t mux = 0; mux < N_MUX; mux++) {
+        for (uint8_t channel = 0; channel < N_CH; channel++) {
             resetKey(g_keys[mux][channel]);
         }
     }
     
-    Serial.println("VelocityEngine: Initialized");
+    // Initialize acquisition buffers
+    memset(&g_acquisition, 0, sizeof(g_acquisition));
+    
+    Serial.println("VelocityEngine: Initialized for 4x16 MUX configuration");
     Serial.print("Thresholds: Low="); Serial.print(kThresholdLow);
     Serial.print(", High="); Serial.print(kThresholdHigh);
     Serial.print(", Release="); Serial.println(kThresholdRelease);
@@ -22,9 +26,13 @@ void VelocityEngine::initialize() {
 void VelocityEngine::processKey(uint8_t mux, uint8_t channel, 
                                uint16_t adc_value, uint32_t timestamp_us) {
     // Bounds checking
-    if (mux >= kMaxMux || channel >= kMaxChannels) {
+    if (mux >= N_MUX || channel >= N_CH) {
         return;
     }
+    
+    // Store in acquisition buffer
+    g_acquisition.workingValues[mux][channel] = adc_value;
+    g_acquisition.t_sample_us[mux][channel] = timestamp_us;
     
     KeyData& key = g_keys[mux][channel];
     KeyState oldState = key.state;
@@ -213,7 +221,7 @@ void VelocityEngine::logStateChange(uint8_t mux, uint8_t channel,
 }
 
 void VelocityEngine::printKeyStats(uint8_t mux, uint8_t channel) {
-    if (mux >= kMaxMux || channel >= kMaxChannels) return;
+    if (mux >= N_MUX || channel >= N_CH) return;
     
     KeyData& key = g_keys[mux][channel];
     Serial.print("CH"); Serial.print(channel);
@@ -225,8 +233,8 @@ void VelocityEngine::printKeyStats(uint8_t mux, uint8_t channel) {
 
 void VelocityEngine::printAllActiveKeys() {
     bool found_active = false;
-    for (uint8_t mux = 0; mux < kMaxMux; mux++) {
-        for (uint8_t channel = 0; channel < kMaxChannels; channel++) {
+    for (uint8_t mux = 0; mux < N_MUX; mux++) {
+        for (uint8_t channel = 0; channel < N_CH; channel++) {
             KeyData& key = g_keys[mux][channel];
             if (key.state != KeyState::IDLE || key.total_triggers > 0) {
                 if (!found_active) {

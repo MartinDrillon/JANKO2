@@ -1,7 +1,7 @@
 #pragma once
 #include <Arduino.h>
+#include "config.h"
 #include "calibration.h"
-#include "note_map.h"
 
 // === Key State Machine ===
 enum class KeyState : uint8_t {
@@ -38,8 +38,33 @@ struct KeyData {
 };
 
 // === Global Key State Array ===
-// [mux][channel] → KeyData
-extern KeyData g_keys[kMaxMux][kMaxChannels];
+// [mux][channel] → KeyData using config.h constants
+extern KeyData g_keys[N_MUX][N_CH];
+
+// === Acquisition Buffers ===
+struct AcquisitionData {
+    // Current working values (being written during scan)
+    uint16_t workingValues[N_MUX][N_CH];
+    uint32_t t_sample_us[N_MUX][N_CH];
+    
+    // Snapshot values (stable for debug/logging)
+    uint16_t snapshotValues[N_MUX][N_CH];
+    uint32_t snapshotTimestamp_us;
+    
+    // Frame management
+    volatile bool frameReady = false;
+    uint32_t frameCounter = 0;
+    
+    void swapBuffers() {
+        // Copy working → snapshot
+        memcpy(snapshotValues, workingValues, sizeof(snapshotValues));
+        snapshotTimestamp_us = micros();
+        frameReady = true;
+        frameCounter++;
+    }
+};
+
+extern AcquisitionData g_acquisition;
 
 // === State Names for Debug ===
 inline const char* getStateName(KeyState state) {
