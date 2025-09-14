@@ -61,10 +61,6 @@ static RunState gState = RunState::CALIBRATING;
 constexpr uint32_t kCalibDurationMs = 2000;
 static uint32_t gCalibT0 = 0;
 
-// Calibration histogram for median calculation (10-bit ADC = 1024 values)
-static uint32_t gHist[1024] = {0};
-static uint32_t gSamplesTotal = 0;
-
 // --- Scanning State ---
 uint8_t currentChannel = 0;
 uint32_t lastScanUs = 0;
@@ -72,7 +68,6 @@ uint32_t lastScanUs = 0;
 
 
 // --- Function Declarations ---
-uint16_t calculateMedian();
 void finishCalibration();
 
 // --- Dual MUX Control Functions ---
@@ -140,15 +135,15 @@ void scanChannelDualADC(uint8_t channel) {
     values[3] = analogRead(PAIR_ADC1_PINS[3]); // MUX3
     values[7] = analogRead(PAIR_ADC0_PINS[3]); // MUX7
     
-    // === Calibration data collection ===
+    // === Calibration data collection par touche ===
     if (gState == RunState::CALIBRATING) {
-        // Collect all ADC values in histogram for median calculation
+        // Collecter valeurs ADC dans histogrammes par touche pour calcul médiane
         for (uint8_t mux = 0; mux < 8; mux++) {
             uint16_t val = values[mux];
             // Clamp to 10-bit range (safety check)
             if (val > 1023) val = 1023;
-            gHist[val]++;
-            gSamplesTotal++;
+            gHistLow[mux][channel][val]++;
+            gTotalLow[mux][channel]++;
         }
     }
     
@@ -171,6 +166,9 @@ void setup() {
     while (!Serial && millis() < 3000) { /* wait for host */ }
     
     Serial.println(F("=== JANKO2 8x16 Dual-ADC Controller Starting ==="));
+    
+    // Initialize calibration system
+    initializeCalibration();
     
     // Initialize dual MUX hardware
     initializeDualMux();
@@ -227,37 +225,23 @@ void loop() {
 }
 
 // === Calibration Functions ===
-uint16_t calculateMedian() {
-    if (gSamplesTotal == 0) {
-        return 650; // Return default value
-    }
-    
-    uint32_t target = gSamplesTotal / 2;
-    uint32_t cumSum = 0;
-    
-    for (uint16_t i = 0; i < 1024; i++) {
-        cumSum += gHist[i];
-        if (cumSum >= target) {
-            return i;
+void finishCalibration() {
+    // Calculer médiane par touche et mettre à jour les seuils
+    for (uint8_t mux = 0; mux < N_MUX; mux++) {
+        for (uint8_t ch = 0; ch < N_CH; ch++) {
+            uint16_t median = calculateMedianForKey(mux, ch);
+            setLow(mux, ch, median);
         }
     }
-    
-    // Fallback (should not happen)
-    return 650;
-}
-
-void finishCalibration() {
-    // Calculate median from histogram
-    uint16_t median = calculateMedian();
-    
-    // Update runtime threshold
-    gThresholdLow = median;
     
     // Turn off calibration LEDs
     setCalibrationLeds(false);
     
     // Change state to RUN
     gState = RunState::RUN;
+    
+    // Optional: Clear calibration data to free memory
+    clearCalibrationData();
 }
 
 

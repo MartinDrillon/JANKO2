@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "config.h"
 
 // === ADC Configuration ===
 // Référence ADC : 10 bits = 0..1023, Vref = 3.3V
@@ -8,16 +9,49 @@
 // ThresholdHigh = ADC(3.2V) - 30 → 3.2/3.3*1023 ≈ 993, donc ≈ 963
 static constexpr uint16_t kThresholdHigh = 880;
 
-// Runtime threshold (will be updated by calibration from default value 650)
-extern uint16_t gThresholdLow;
-
-// Get current runtime threshold
-inline uint16_t getThresholdLow() {
-    return gThresholdLow;
-}
-
 // ThresholdRelease = ThresholdHigh - 50 → ≈ 913
 static constexpr uint16_t kThresholdRelease = 850;
+
+// === Seuils par touche ===
+// Calibration par touche - histogrammes pour médiane (256 Ko RAM)
+extern uint16_t gHistLow[N_MUX][N_CH][1024];   // Histogrammes par touche
+extern uint16_t gTotalLow[N_MUX][N_CH];        // Total échantillons par touche
+
+// Seuils runtime par touche (updated by calibration)
+extern uint16_t gThresholdLowPerKey[N_MUX][N_CH];
+
+// Getters pour seuils par touche
+inline uint16_t getLow(uint8_t mux, uint8_t channel) {
+    if (mux >= N_MUX || channel >= N_CH) return 650; // fallback
+    return gThresholdLowPerKey[mux][channel];
+}
+
+inline uint16_t getHigh(uint8_t mux, uint8_t channel) {
+    (void)mux; (void)channel; // unused for now
+    return kThresholdHigh;
+}
+
+inline uint16_t getRelease(uint8_t mux, uint8_t channel) {
+    (void)mux; (void)channel; // unused for now  
+    return kThresholdRelease;
+}
+
+// Setters pour calibration
+inline void setLow(uint8_t mux, uint8_t channel, uint16_t value) {
+    if (mux >= N_MUX || channel >= N_CH) return;
+    // Clamp to valid ADC range
+    gThresholdLowPerKey[mux][channel] = (value > 1023) ? 1023 : value;
+}
+
+// Legacy getter for compatibility (deprecated)
+inline uint16_t getThresholdLow() {
+    return getLow(0, 0); // fallback to first key
+}
+
+// === Fonctions de calibration ===
+void initializeCalibration();
+void clearCalibrationData();
+uint16_t calculateMedianForKey(uint8_t mux, uint8_t channel);
 
 // === Hystérésis et filtres ===
 // Nombre d'échantillons consécutifs pour valider un franchissement
