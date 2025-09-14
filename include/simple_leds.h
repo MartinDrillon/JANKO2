@@ -6,3 +6,6 @@ void simpleLedsInit();
 
 // Met à jour les LEDs selon l'état du pin 3
 void simpleLedsTask();
+
+// Calibration LED functions
+void setCalibrationLeds(bool enabled);  // Turn red LEDs 3,4,5 on/off

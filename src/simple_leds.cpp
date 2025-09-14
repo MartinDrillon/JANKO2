@@ -37,3 +37,18 @@ void simpleLedsTask() {
     }
     strip.show();
 }
+
+void setCalibrationLeds(bool enabled) {
+    if (enabled) {
+        // Turn on LEDs 2, 3, 4 in red (indices 2, 3, 4 - last 3 LEDs of the 5-LED strip)
+        strip.setPixelColor(2, strip.Color(255, 0, 0)); // Red
+        strip.setPixelColor(3, strip.Color(255, 0, 0)); // Red
+        strip.setPixelColor(4, strip.Color(255, 0, 0)); // Red
+    } else {
+        // Turn off calibration LEDs
+        strip.setPixelColor(2, 0);
+        strip.setPixelColor(3, 0);
+        strip.setPixelColor(4, 0);
+    }
+    strip.show();
+}

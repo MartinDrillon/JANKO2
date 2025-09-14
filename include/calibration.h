@@ -8,8 +8,13 @@
 // ThresholdHigh = ADC(3.2V) - 30 → 3.2/3.3*1023 ≈ 993, donc ≈ 963
 static constexpr uint16_t kThresholdHigh = 900;
 
-// ThresholdLow = ADC(2.3V) + 30 → 2.3/3.3*1023 ≈ 713, donc ≈ 743  
-static constexpr uint16_t kThresholdLow = 650;
+// Runtime threshold (will be updated by calibration from default value 650)
+extern uint16_t gThresholdLow;
+
+// Get current runtime threshold
+inline uint16_t getThresholdLow() {
+    return gThresholdLow;
+}
 
 // ThresholdRelease = ThresholdHigh - 50 → ≈ 913
 static constexpr uint16_t kThresholdRelease = 850;

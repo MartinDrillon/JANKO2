@@ -18,7 +18,7 @@ void VelocityEngine::initialize() {
     memset(&g_acquisition, 0, sizeof(g_acquisition));
     
     Serial.println("VelocityEngine: Initialized for 4x16 MUX configuration");
-    Serial.print("Thresholds: Low="); Serial.print(kThresholdLow);
+    Serial.print("Thresholds: Low="); Serial.print(getThresholdLow());
     Serial.print(", High="); Serial.print(kThresholdHigh);
     Serial.print(", Release="); Serial.println(kThresholdRelease);
 }
@@ -68,7 +68,7 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
 
 void VelocityEngine::handleIdle(KeyData& key, uint16_t adc, uint32_t t_us, 
                                uint8_t mux, uint8_t channel) {
-    if (adc > kThresholdLow) {
+    if (adc > getThresholdLow()) {
         key.stable_up_count++;
         if (key.stable_up_count >= kStableCount) {
             // START TRACKING
@@ -92,7 +92,7 @@ void VelocityEngine::handleTracking(KeyData& key, uint16_t adc, uint32_t t_us,
         return;
     }
     
-    if (adc < kThresholdLow) {
+    if (adc < getThresholdLow()) {
         // FALSE START - fell below threshold before hitting high
         key.false_starts++;
         resetKey(key);
@@ -149,7 +149,7 @@ void VelocityEngine::handleHeld(KeyData& key, uint16_t adc, uint32_t t_us,
 void VelocityEngine::handleRearmed(KeyData& key, uint16_t adc, uint32_t t_us,
                                   uint8_t mux, uint8_t channel) {
     // Ready for re-trigger without going back to ThresholdLow
-    if (adc > kThresholdLow) {
+    if (adc > getThresholdLow()) {
         key.stable_up_count++;
         if (key.stable_up_count >= kStableCount) {
             // Re-trigger detected
@@ -160,7 +160,7 @@ void VelocityEngine::handleRearmed(KeyData& key, uint16_t adc, uint32_t t_us,
         }
     } else {
         key.stable_up_count = 0;
-        if (adc < kThresholdLow - 20) { // small hysteresis
+        if (adc < getThresholdLow() - 20) { // small hysteresis
             // Full release - back to IDLE
             key.state = KeyState::IDLE;
         }

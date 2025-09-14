@@ -55,6 +55,16 @@ static constexpr ChannelGPIO CHANNEL_LUT[16] = {
 // === USB MIDI is built-in on Teensy ===
 // No additional setup required
 
+// === Calibration State ===
+enum class RunState { CALIBRATING, RUN };
+static RunState gState = RunState::CALIBRATING;
+constexpr uint32_t kCalibDurationMs = 2000;
+static uint32_t gCalibT0 = 0;
+
+// Calibration histogram for median calculation (10-bit ADC = 1024 values)
+static uint32_t gHist[1024] = {0};
+static uint32_t gSamplesTotal = 0;
+
 // --- Scanning State ---
 uint8_t currentChannel = 0;
 uint32_t lastScanUs = 0;
@@ -112,6 +122,8 @@ constexpr uint8_t MONITORED_MUX_B = 6;          // Group B MUX to monitor
 
 // --- Function Declarations ---
 void handleSerialCommands();
+uint16_t calculateMedian();
+void finishCalibration();
 
 // --- Dual MUX Control Functions ---
 // --- Ultra-Fast MUX Channel Setting with LUT ---
@@ -189,11 +201,33 @@ void scanChannelDualADC(uint8_t channel) {
     
     uint32_t conversionTime = micros() - conversionStart;
     
+    // === Calibration data collection ===
+    if (gState == RunState::CALIBRATING) {
+        // Collect all ADC values in histogram for median calculation
+        for (uint8_t mux = 0; mux < 8; mux++) {
+            uint16_t val = values[mux];
+            // Clamp to 10-bit range (safety check)
+            if (val > 1023) val = 1023;
+            gHist[val]++;
+            gSamplesTotal++;
+        }
+    }
+    
     // (d) Processing timing - batch process all 8 keys
     uint32_t processingStart = micros();
-    for (uint8_t mux = 0; mux < 8; mux++) {
-        VelocityEngine::processKey(mux, channel, values[mux], timestamp_us);
+    
+    // Only process keys if not calibrating (suspend MIDI engine during calibration)
+    if (gState == RunState::RUN) {
+        for (uint8_t mux = 0; mux < 8; mux++) {
+            VelocityEngine::processKey(mux, channel, values[mux], timestamp_us);
+        }
+    } else {
+        // During calibration, still update working values for continuity but no MIDI processing
+        for (uint8_t mux = 0; mux < 8; mux++) {
+            g_acquisition.workingValues[mux][channel] = values[mux];
+        }
     }
+    
     uint32_t processingTime = micros() - processingStart;
     
     // Add to performance metrics
@@ -217,7 +251,7 @@ void printMonitoredKeysInfo() {
     Serial.print(" State="); Serial.print(getStateName(keyB.state));
     
     // Show thresholds for reference
-    Serial.print(" [L="); Serial.print(kThresholdLow);
+    Serial.print(" [L="); Serial.print(getThresholdLow());
     Serial.print(" H="); Serial.print(kThresholdHigh);
     Serial.print(" R="); Serial.print(kThresholdRelease); Serial.print("]");
     Serial.println();
@@ -255,6 +289,12 @@ void setup() {
     simpleLedsInit();
     Serial.println("LEDs initialized");
     
+    // Start calibration: turn on red LEDs 3, 4, 5
+    setCalibrationLeds(true);
+    gCalibT0 = millis();
+    Serial.println("=== CALIBRATION STARTED ===");
+    Serial.println("Red LEDs 3,4,5 on - collecting ADC data for 2 seconds...");
+    
     // Initialize velocity engine
     VelocityEngine::initialize();
     
@@ -279,6 +319,11 @@ void setup() {
 void loop() {
     const uint32_t nowUs = micros();
     const uint32_t nowMs = millis();
+
+    // === Calibration state management ===
+    if (gState == RunState::CALIBRATING && (nowMs - gCalibT0 >= kCalibDurationMs)) {
+        finishCalibration();
+    }
 
     // === Main scanning loop - Target 2 synchronized pairs ===
     if (nowUs - lastScanUs >= kScanIntervalMicros) {
@@ -336,6 +381,48 @@ void loop() {
         lastDebugMs = nowMs;
         printMonitoredKeysInfo();
     }
+}
+
+// === Calibration Functions ===
+uint16_t calculateMedian() {
+    if (gSamplesTotal == 0) {
+        Serial.println("WARNING: No samples collected during calibration!");
+        return 650; // Return default value
+    }
+    
+    uint32_t target = gSamplesTotal / 2;
+    uint32_t cumSum = 0;
+    
+    for (uint16_t i = 0; i < 1024; i++) {
+        cumSum += gHist[i];
+        if (cumSum >= target) {
+            return i;
+        }
+    }
+    
+    // Fallback (should not happen)
+    return 650;
+}
+
+void finishCalibration() {
+    // Calculate median from histogram
+    uint16_t median = calculateMedian();
+    
+    // Update runtime threshold
+    gThresholdLow = median;
+    
+    // Turn off calibration LEDs
+    setCalibrationLeds(false);
+    
+    // Change state to RUN
+    gState = RunState::RUN;
+    
+    // Log completion
+    Serial.printf("=== CALIBRATION COMPLETED ===\n");
+    Serial.printf("ThresholdLow updated to: %u (was 650)\n", gThresholdLow);
+    Serial.printf("Total samples collected: %lu\n", gSamplesTotal);
+    Serial.printf("MIDI engine now active\n");
+    Serial.println("=============================");
 }
 
 // === Console Command Handler ===
