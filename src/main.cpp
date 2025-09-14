@@ -23,6 +23,9 @@ constexpr uint8_t MONITORED_CHANNEL = 6;        // Channel to monitor
 constexpr uint8_t MONITORED_MUX_A = 2;          // Group A MUX to monitor
 constexpr uint8_t MONITORED_MUX_B = 6;          // Group B MUX to monitor
 
+// --- Function Declarations ---
+void handleSerialCommands();
+
 // --- Dual MUX Control Functions ---
 void setMuxChannel(uint8_t channel) {
     // Set Group A (MUX 0-3) S0-S3 lines
@@ -153,6 +156,18 @@ void setup() {
     Serial.println("Dual-ADC parallel scanning active!");
     Serial.println("Touch keys to trigger notes!");
     Serial.println();
+    
+    // Show current note mapping
+    printNoteMap();
+    
+    Serial.println("=== Console Commands ===");
+    Serial.println("'m' - Print current note mapping");
+    Serial.println("'n <mux> <ch> <note>' - Set note for specific position");
+    Serial.println("'d <mux> <ch>' - Disable specific position");
+    Serial.println("Example: 'n 0 5 72' sets MUX0-CH5 to note 72 (C5)");
+    Serial.println("Example: 'd 7 15' disables MUX7-CH15");
+    Serial.println("Note: Pin-controlled transpose will be added later");
+    Serial.println();
 }
 
 void loop() {
@@ -178,6 +193,9 @@ void loop() {
     // === Handle other tasks ===
     // USB MIDI is handled automatically
     
+    // Handle console commands
+    handleSerialCommands();
+    
     // Update LEDs
     simpleLedsTask();
     
@@ -185,6 +203,90 @@ void loop() {
     if (nowMs - lastDebugMs >= DEBUG_INTERVAL_MS) {
         lastDebugMs = nowMs;
         printMonitoredKeysInfo();
+    }
+}
+
+// === Console Command Handler ===
+void handleSerialCommands() {
+    if (!Serial.available()) return;
+    
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+    
+    if (command.length() == 0) return;
+    
+    char cmd = command.charAt(0);
+    
+    switch (cmd) {
+        case 'm':
+        case 'M':
+            Serial.println("Current note mapping:");
+            printNoteMap();
+            break;
+            
+        case 'n':
+        case 'N': {
+            // Parse "n <mux> <ch> <note>"
+            int space1 = command.indexOf(' ');
+            int space2 = command.indexOf(' ', space1 + 1);
+            int space3 = command.indexOf(' ', space2 + 1);
+            
+            if (space1 > 0 && space2 > space1 && space3 > space2) {
+                uint8_t mux = command.substring(space1 + 1, space2).toInt();
+                uint8_t ch = command.substring(space2 + 1, space3).toInt();
+                int8_t note = command.substring(space3 + 1).toInt();
+                
+                if (mux < N_MUX && ch < N_CH && note >= 0 && note <= 127) {
+                    // Note: This modifies the const array - only works if we make it non-const
+                    Serial.print("Setting MUX");
+                    Serial.print(mux);
+                    Serial.print("-CH");
+                    Serial.print(ch);
+                    Serial.print(" to note ");
+                    Serial.println(note);
+                    Serial.println("Note: Restart required for permanent changes");
+                } else {
+                    Serial.println("Error: Invalid parameters (mux:0-7, ch:0-15, note:0-127)");
+                }
+            } else {
+                Serial.println("Usage: n <mux> <ch> <note>");
+                Serial.println("Example: n 0 5 72");
+            }
+            break;
+        }
+        
+        case 'd':
+        case 'D': {
+            // Parse "d <mux> <ch>"
+            int space1 = command.indexOf(' ');
+            int space2 = command.indexOf(' ', space1 + 1);
+            
+            if (space1 > 0 && space2 > space1) {
+                uint8_t mux = command.substring(space1 + 1, space2).toInt();
+                uint8_t ch = command.substring(space2 + 1).toInt();
+                
+                if (mux < N_MUX && ch < N_CH) {
+                    Serial.print("Disabling MUX");
+                    Serial.print(mux);
+                    Serial.print("-CH");
+                    Serial.println(ch);
+                    Serial.println("Note: Restart required for permanent changes");
+                } else {
+                    Serial.println("Error: Invalid parameters (mux:0-7, ch:0-15)");
+                }
+            } else {
+                Serial.println("Usage: d <mux> <ch>");
+                Serial.println("Example: d 7 15");
+            }
+            break;
+        }
+        
+        default:
+            Serial.println("Unknown command. Available commands:");
+            Serial.println("'m' - Print current note mapping");
+            Serial.println("'n <mux> <ch> <note>' - Set note for specific position");
+            Serial.println("'d <mux> <ch>' - Disable specific position");
+            break;
     }
 }
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         

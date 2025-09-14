@@ -4,21 +4,28 @@
 
 // === MIDI Note Mapping for 8x16 MUX Configuration ===
 
-// Get MIDI note number for given MUX and channel
-// Temporary mapping: linear progression from C3 (note 48)
+// Sentinel value for disabled keys
+constexpr int8_t DISABLED = -1;
+
+// Note mapping table [mux][channel] -> MIDI note (0-127) or DISABLED
+extern const int8_t kNoteMap[8][16];
+
+// Global transpose value (for future pin-controlled transpose)
+// Currently not applied automatically - will be activated by hardware pin
+extern int8_t gTranspose;
+
+// Get effective MIDI note for given MUX and channel
+// Returns DISABLED if key is disabled or note out of range
+// Note: Transpose will be applied later when controlled by hardware pin
+int8_t effectiveNote(uint8_t mux, uint8_t channel);
+
+// Legacy function for compatibility (will be removed)
 inline uint8_t getMidiNote(uint8_t mux, uint8_t channel) {
-    // Bounds checking
-    if (mux >= N_MUX || channel >= N_CH) {
-        return 60; // Default to C4
-    }
-    
-    // Linear mapping: MUX0-CH0 = note 48 (C3)
-    // Each MUX gets 16 consecutive notes
-    // 128 total notes covering 10+ octaves
-    return 48 + (mux * N_CH) + channel;
+    int8_t note = effectiveNote(mux, channel);
+    return (note >= 0) ? (uint8_t)note : 60; // Default to C4 for disabled keys
 }
 
-// === Debug Helper ===
+// === Debug Helpers ===
 inline const char* getNoteNameC(uint8_t midiNote) {
     static const char* noteNames[] = {
         "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
@@ -29,6 +36,9 @@ inline const char* getNoteNameC(uint8_t midiNote) {
 inline uint8_t getNoteOctave(uint8_t midiNote) {
     return (midiNote / 12) - 1;
 }
+
+// Debug function to print current note mapping
+void printNoteMap();
 
 // === 8-MUX Note Layout for Testing ===
 // Group A (ADC1):

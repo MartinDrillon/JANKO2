@@ -103,14 +103,21 @@ void VelocityEngine::handleTracking(KeyData& key, uint16_t adc, uint32_t t_us,
         key.stable_up_count++;
         if (key.stable_up_count >= kStableCount) {
             // NOTE TRIGGERED!
+            int8_t note = effectiveNote(mux, channel);
+            
+            // Skip disabled keys
+            if (note == DISABLED) {
+                resetKey(key); // Don't send MIDI for disabled keys
+                return;
+            }
+            
             uint16_t delta_adc = max(adc - key.adc_start, kMinDeltaADC);
             uint32_t delta_t = t_us - key.t_start_us;
             uint8_t velocity = calculateVelocity(delta_adc, delta_t);
-            uint8_t note = getMidiNote(mux, channel);
             
-            sendNoteOn(note, velocity, mux, channel);
+            sendNoteOn((uint8_t)note, velocity, mux, channel);
             key.note_on_sent = true;
-            key.current_note = note;
+            key.current_note = (uint8_t)note;
             key.current_velocity = velocity;
             key.state = KeyState::HELD;
             key.stable_up_count = 0;
