@@ -6,7 +6,7 @@
 
 // === Seuils globaux ===
 // ThresholdHigh = ADC(3.2V) - 30 → 3.2/3.3*1023 ≈ 993, donc ≈ 963
-static constexpr uint16_t kThresholdHigh = 900;
+static constexpr uint16_t kThresholdHigh = 880;
 
 // Runtime threshold (will be updated by calibration from default value 650)
 extern uint16_t gThresholdLow;
@@ -21,10 +21,10 @@ static constexpr uint16_t kThresholdRelease = 850;
 
 // === Hystérésis et filtres ===
 // Nombre d'échantillons consécutifs pour valider un franchissement
-static constexpr uint8_t kStableCount = 2;
+static constexpr uint8_t kStableCount = 1;
 
 // Delta ADC minimum pour ignorer micro-tremblements
-static constexpr uint16_t kMinDeltaADC = 15;
+static constexpr uint16_t kMinDeltaADC = 5;
 
 // === Vélocité (mapping vers MIDI 1..127) ===
 // Vitesse minimum en counts/s (sera mappée à vélocité MIDI 1)
@@ -34,8 +34,8 @@ static constexpr float kSpeedMin = 100.0f;
 static constexpr float kSpeedMax = 5000.0f;
 
 // === Timing ===
-// Timeout TRACKING maximum en microsecondes (100ms)
-static constexpr uint32_t kTrackingTimeoutUs = 100000;
+// Timeout TRACKING maximum en microsecondes (1000ms)
+static constexpr uint32_t kTrackingTimeoutUs = 1000000;
 
 // === Fonctions utilitaires ===
 inline uint8_t calculateVelocity(float speed) {
