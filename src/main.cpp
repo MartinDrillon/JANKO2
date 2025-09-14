@@ -2,12 +2,16 @@
 // True parallel scanning: ADC0 + ADC1 simultaneous reads
 
 #include <Arduino.h>
+#include <ADC.h>
 #include "config.h"
 #include "simple_leds.h"
 #include "velocity_engine.h"
 #include "calibration.h"
 #include "note_map.h"
 #include "key_state.h"
+
+// === Global ADC Instance ===
+static ADC gAdc;
 
 // === Fast MUX Channel Switching LUT ===
 // Pre-calculated GPIO states for each channel (0-15)
@@ -167,25 +171,33 @@ void scanChannelDualADC(uint8_t channel) {
     // Get timestamp for velocity processing
     uint32_t timestamp_us = micros();
     
-    // (c) Conversion timing - 4 optimized pairs (using fast analogRead for now)
+    // (c) Target 3: Synchronized ADC pairs - 4 parallel readings
     uint32_t conversionStart = micros();
     uint16_t values[8];
     
-    // Pair 1: MUX0 (pin 41) + MUX4 (pin 20)
-    values[0] = analogRead(PAIR_ADC1_PINS[0]); // MUX0 
-    values[4] = analogRead(PAIR_ADC0_PINS[0]); // MUX4
+    // Pair 1: ADC1:41 (MUX0) || ADC0:20 (MUX4)
+    gAdc.startSynchronizedSingleRead(PAIR_ADC1_PINS[0], PAIR_ADC0_PINS[0]);
+    ADC::Sync_result r1 = gAdc.readSynchronizedSingle();
+    values[0] = r1.result_adc1; // MUX0
+    values[4] = r1.result_adc0; // MUX4
     
-    // Pair 2: MUX1 (pin 40) + MUX5 (pin 21)
-    values[1] = analogRead(PAIR_ADC1_PINS[1]); // MUX1
-    values[5] = analogRead(PAIR_ADC0_PINS[1]); // MUX5
+    // Pair 2: ADC1:40 (MUX1) || ADC0:21 (MUX5)
+    gAdc.startSynchronizedSingleRead(PAIR_ADC1_PINS[1], PAIR_ADC0_PINS[1]);
+    ADC::Sync_result r2 = gAdc.readSynchronizedSingle();
+    values[1] = r2.result_adc1; // MUX1
+    values[5] = r2.result_adc0; // MUX5
     
-    // Pair 3: MUX2 (pin 39) + MUX6 (pin 22)
-    values[2] = analogRead(PAIR_ADC1_PINS[2]); // MUX2
-    values[6] = analogRead(PAIR_ADC0_PINS[2]); // MUX6
+    // Pair 3: ADC1:39 (MUX2) || ADC0:22 (MUX6)
+    gAdc.startSynchronizedSingleRead(PAIR_ADC1_PINS[2], PAIR_ADC0_PINS[2]);
+    ADC::Sync_result r3 = gAdc.readSynchronizedSingle();
+    values[2] = r3.result_adc1; // MUX2
+    values[6] = r3.result_adc0; // MUX6
     
-    // Pair 4: MUX3 (pin 38) + MUX7 (pin 23)
-    values[3] = analogRead(PAIR_ADC1_PINS[3]); // MUX3
-    values[7] = analogRead(PAIR_ADC0_PINS[3]); // MUX7
+    // Pair 4: ADC1:38 (MUX3) || ADC0:23 (MUX7)
+    gAdc.startSynchronizedSingleRead(PAIR_ADC1_PINS[3], PAIR_ADC0_PINS[3]);
+    ADC::Sync_result r4 = gAdc.readSynchronizedSingle();
+    values[3] = r4.result_adc1; // MUX3
+    values[7] = r4.result_adc0; // MUX7
     
     uint32_t conversionTime = micros() - conversionStart;
     
@@ -206,6 +218,8 @@ void printMonitoredKeysInfo() {
     KeyData& keyA = g_keys[MONITORED_MUX_A][MONITORED_CHANNEL];
     KeyData& keyB = g_keys[MONITORED_MUX_B][MONITORED_CHANNEL];
     
+    // === Real-time monitoring DISABLED FOR MAXIMUM SPEED ===
+    /*
     uint16_t adcA = g_acquisition.workingValues[MONITORED_MUX_A][MONITORED_CHANNEL];
     uint16_t adcB = g_acquisition.workingValues[MONITORED_MUX_B][MONITORED_CHANNEL];
     
@@ -221,6 +235,7 @@ void printMonitoredKeysInfo() {
     Serial.print(" H="); Serial.print(kThresholdHigh);
     Serial.print(" R="); Serial.print(kThresholdRelease); Serial.print("]");
     Serial.println();
+    */
 }
 void setup() {
     Serial.begin(115200);
@@ -236,6 +251,18 @@ void setup() {
     setMuxChannel(currentChannel);
     lastScanUs = micros();
     Serial.println("8-MUX dual-ADC system initialized");
+    
+    // === ADC Library Initialization ===
+    analogReadResolution(10);
+    gAdc.adc0->calibrate();
+    gAdc.adc1->calibrate();
+    gAdc.adc0->setAveraging(1);
+    gAdc.adc1->setAveraging(1);
+    gAdc.adc0->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_HIGH_SPEED);
+    gAdc.adc1->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_HIGH_SPEED);
+    gAdc.adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_HIGH_SPEED);
+    gAdc.adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_HIGH_SPEED);
+    Serial.println("ADC library initialized: 10-bit, VERY_HIGH_SPEED, synchronized pairs ready");
     
     Serial.print("Group A ADC pins (ADC1): ");
     for (uint8_t i = 0; i < 4; i++) {
@@ -259,7 +286,7 @@ void setup() {
     VelocityEngine::initialize();
     
     Serial.println("=== Ready for 128-key velocity detection ===");
-    Serial.println("Dual-ADC parallel scanning active!");
+    Serial.println("Target 3: True synchronized ADC pairs active!");
     Serial.println("Touch keys to trigger notes!");
     Serial.println();
     
@@ -280,7 +307,7 @@ void loop() {
     const uint32_t nowUs = micros();
     const uint32_t nowMs = millis();
 
-    // === Main scanning loop - Target 2 synchronized pairs ===
+    // === Main scanning loop - Target 3 synchronized ADC pairs ===
     if (nowUs - lastScanUs >= kScanIntervalMicros) {
         lastScanUs = nowUs;
         
@@ -296,7 +323,8 @@ void loop() {
         }
     }
 
-    // === Target 2 Performance Monitoring ===
+    // === Target 3 Performance Monitoring (DISABLED FOR SPEED TEST) ===
+    /*
     if ((g_perfMetrics.frameCount >= FRAME_SAMPLE_SIZE) || 
         (nowMs - g_perfMetrics.lastReportMs >= PERF_REPORT_INTERVAL_MS)) {
         
@@ -304,7 +332,7 @@ void loop() {
             float frameRate = (g_perfMetrics.frameCount * 1000.0f) / PERF_REPORT_INTERVAL_MS;
             float keyRate = frameRate * 128.0f; // 128 keys per frame
             
-            Serial.printf("=== TARGET 2 PERFORMANCE REPORT ===\n");
+            Serial.printf("=== TARGET 3 PERFORMANCE REPORT ===\n");
             Serial.printf("Frame Rate: %.1f Hz (%.1f keys/s)\n", frameRate, keyRate);
             Serial.printf("Scan Times (µs): min=%lu, avg=%lu, max=%lu\n", 
                          g_perfMetrics.minScanTime, g_perfMetrics.avgScanTime, g_perfMetrics.maxScanTime);
@@ -313,14 +341,15 @@ void loop() {
                          g_perfMetrics.totalSettleTime / (float)g_perfMetrics.frameCount,
                          g_perfMetrics.totalConversionTime / (float)g_perfMetrics.frameCount,
                          g_perfMetrics.totalProcessingTime / (float)g_perfMetrics.frameCount);
-            Serial.printf("Total improvement vs Target 1: %.1fx\n", 
-                         242.0f / g_perfMetrics.avgScanTime); // 242µs was Target 1 baseline
+            Serial.printf("Target 3 improvement vs Target 1: %.1fx (Sync ADC pairs)\n", 
+                         237.0f / g_perfMetrics.avgScanTime); // 237µs was Target 1 baseline
             Serial.println("=====================================");
         }
         
         g_perfMetrics.reset();
         g_perfMetrics.lastReportMs = nowMs;
     }
+    */
 
     // === Handle other tasks ===
     // USB MIDI is handled automatically

@@ -182,22 +182,28 @@ uint8_t VelocityEngine::calculateVelocity(uint16_t delta_adc, uint32_t delta_t_u
 void VelocityEngine::sendNoteOn(uint8_t note, uint8_t velocity, uint8_t mux, uint8_t channel) {
     usbMIDI.sendNoteOn(note, velocity, 1); // Channel 1
     
+    // === MIDI debug output DISABLED FOR MAXIMUM SPEED ===
+    /*
     // Debug output uniquement pour canal 6
     if (channel == 6) {
         Serial.print("NOTE ON: CH"); Serial.print(channel);
         Serial.print(" Note="); Serial.print(note);
         Serial.print(" Vel="); Serial.println(velocity);
     }
+    */
 }
 
 void VelocityEngine::sendNoteOff(uint8_t note, uint8_t mux, uint8_t channel) {
     usbMIDI.sendNoteOff(note, 0, 1); // Channel 1
     
+    // === MIDI debug output DISABLED FOR MAXIMUM SPEED ===
+    /*
     // Debug output uniquement pour canal 6
     if (channel == 6) {
         Serial.print("NOTE OFF: CH"); Serial.print(channel);
         Serial.print(" Note="); Serial.println(note);
     }
+    */
 }
 
 void VelocityEngine::resetKey(KeyData& key) {
@@ -214,6 +220,8 @@ void VelocityEngine::resetKey(KeyData& key) {
 void VelocityEngine::logStateChange(uint8_t mux, uint8_t channel, 
                                    KeyState old_state, KeyState new_state, 
                                    uint16_t adc, uint8_t velocity) {
+    // === State change logging DISABLED FOR MAXIMUM SPEED ===
+    /*
     // Debug uniquement pour le canal surveillé
     if (channel == 6) {  // Canal 6 seulement
         Serial.print("CH"); Serial.print(channel);
@@ -225,6 +233,7 @@ void VelocityEngine::logStateChange(uint8_t mux, uint8_t channel,
         }
         Serial.println();
     }
+    */
 }
 
 void VelocityEngine::printKeyStats(uint8_t mux, uint8_t channel) {
