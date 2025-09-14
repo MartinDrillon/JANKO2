@@ -9,6 +9,7 @@
 #include "calibration.h"
 #include "note_map.h"
 #include "key_state.h"
+#include "manual_thresholds.h" // optional manual per-key thresholds
 
 // === ADC Instance ===
 static ADC gAdc;
@@ -252,6 +253,10 @@ void setup() {
         #else
             Serial.println("Sync call order: startSync(ADC1pin, ADC0pin)");
         #endif
+
+            // Optional: apply manual thresholds override (disabled by default).
+            // Uncomment to enable global manual thresholds table (all {720,880}).
+            // ManualThresholds::apply(true); // enable override
     
     // Show current note mapping
     printNoteMap();
