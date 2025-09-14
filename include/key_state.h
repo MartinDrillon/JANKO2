@@ -38,7 +38,7 @@ struct KeyData {
 };
 
 // === Global Key State Array ===
-// [mux][channel] → KeyData using config.h constants
+// [mux][channel] → KeyData using config.h constants (8x16 = 128 keys)
 extern KeyData g_keys[N_MUX][N_CH];
 
 // === Acquisition Buffers ===
