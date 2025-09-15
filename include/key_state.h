@@ -28,7 +28,7 @@ struct KeyData {
     uint8_t stable_up_count = 0;
     uint8_t stable_down_count = 0;
     
-    // Last measurement
+    // Last measurement 
     uint16_t last_adc = 0;
     uint32_t last_sample_us = 0;
     

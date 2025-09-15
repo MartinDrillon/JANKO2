@@ -67,29 +67,5 @@ int8_t effectiveNote(uint8_t mux, uint8_t channel) {
 }
 
 void printNoteMap() {
-    Serial.println("=== Current Note Mapping ===");
-    Serial.print("Global Transpose: ");
-    Serial.print(gTranspose);
-    Serial.println(" (not applied automatically - will be pin-controlled later)");
-    Serial.println();
-    
-    for (uint8_t mux = 0; mux < N_MUX; mux++) {
-        Serial.print("MUX");
-        Serial.print(mux);
-        Serial.print(": ");
-        
-        for (uint8_t ch = 0; ch < N_CH; ch++) {
-            int8_t note = effectiveNote(mux, ch);
-            if (note == DISABLED) {
-                Serial.print(" -- ");
-            } else {
-                if (note < 100) Serial.print(" ");
-                if (note < 10) Serial.print(" ");
-                Serial.print(note);
-            }
-            if (ch < N_CH - 1) Serial.print(",");
-        }
-        Serial.println();
-    }
-    Serial.println("============================");
+    // Mapping print removed (no Serial in performance build)
 }

@@ -9,7 +9,6 @@
 #include "calibration.h"
 #include "note_map.h"
 #include "key_state.h"
-#include "manual_thresholds.h" // optional manual per-key thresholds
 
 // === ADC Instance ===
 static ADC gAdc;
@@ -131,7 +130,7 @@ void initializeDualMux() {
     gAdc.adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_HIGH_SPEED);
     gAdc.adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_HIGH_SPEED);
     
-    Serial.println("ADC library initialized with VERY_HIGH_SPEED configuration");
+    // Serial prints removed for performance
 }
 
 // --- Optimized Scanning with LUT and Synchronized ADC ---
@@ -153,7 +152,7 @@ void scanChannelDualADC(uint8_t channel) {
         // Perform four synchronized dual-ADC reads (must do all 4 to avoid cloned values)
         // EXACT SPECIFIED IMPLEMENTATION with selectable order and per-pair debug
         uint16_t values[8];
-        for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 4; ++i) {
             #if ADC_SYNC_ORDER == 0
                 // Ordre (ADC0, ADC1) — souvent attendu par pedvide sur T4.1
                 const int pin_adc0 = MUX_ADC_PINS[4 + i];  // 20,21,22,23
@@ -173,11 +172,10 @@ void scanChannelDualADC(uint8_t channel) {
             #endif
 
             #if DEBUG_PRINT_PAIRS
-                Serial.printf("CH%02u P%u: ADC1(%d)=%4u | ADC0(%d)=%4u\n",
-                                            channel, i,
-                                            MUX_ADC_PINS[i],     values[i],
-                                            MUX_ADC_PINS[4 + i], values[4 + i]);
+                // Pair debug removed
             #endif
+            // Micro pause to allow next pair stabilization (avoid cloned samples)
+            delayMicroseconds(1);
         }
 
     // === Calibration data collection ===
@@ -204,25 +202,12 @@ void scanChannelDualADC(uint8_t channel) {
     }
 
     // Optional debug print
-    #if DEBUG_PRINT_VALUES
-    Serial.print("CH"); Serial.print(channel); Serial.print(" ADC: ");
-    Serial.print("M0="); Serial.print(values[0]); Serial.print(' ');
-    Serial.print("M1="); Serial.print(values[1]); Serial.print(' ');
-    Serial.print("M2="); Serial.print(values[2]); Serial.print(' ');
-    Serial.print("M3="); Serial.print(values[3]); Serial.print(' ');
-    Serial.print("M4="); Serial.print(values[4]); Serial.print(' ');
-    Serial.print("M5="); Serial.print(values[5]); Serial.print(' ');
-    Serial.print("M6="); Serial.print(values[6]); Serial.print(' ');
-    Serial.print("M7="); Serial.println(values[7]);
-    #endif
+    // Value debug removed
 }
 
 
 void setup() {
-    Serial.begin(115200);
-    while (!Serial && millis() < 3000) { /* wait for host */ }
-    
-    Serial.println(F("=== JANKO2 8x16 Dual-ADC Controller Starting ==="));
+    // Serial interface removed
     
     // Initialize dual MUX hardware
     initializeDualMux();
@@ -235,31 +220,18 @@ void setup() {
     // Start calibration: turn on red LEDs 3, 4, 5
     setCalibrationLeds(true);
     gCalibT0 = millis();
-    Serial.println("=== CALIBRATION STARTED ===");
+    // Calibration start banner removed
     
     // Initialize velocity engine
     VelocityEngine::initialize();
     
-    Serial.println("=== Ready for 128-key velocity detection ===");
+    // Ready banner removed
     
         // === ADC Pin Mapping Sanity Check (dynamic) ===
-        Serial.printf("Pairs: ");
-        for (int i=0;i<4;++i){
-            Serial.printf("(ADC1:%d//ADC0:%d) ", MUX_ADC_PINS[i], MUX_ADC_PINS[4+i]);
-        }
-        Serial.println();
-        #if ADC_SYNC_ORDER==0
-            Serial.println("Sync call order: startSync(ADC0pin, ADC1pin)");
-        #else
-            Serial.println("Sync call order: startSync(ADC1pin, ADC0pin)");
-        #endif
-
-            // Optional: apply manual thresholds override (disabled by default).
-            // Uncomment to enable global manual thresholds table (all {720,880}).
-            // ManualThresholds::apply(true); // enable override
+        // Pin mapping sanity print removed
     
     // Show current note mapping
-    printNoteMap();
+    // printNoteMap removed (Serial use)
 }
 
 void loop() {

@@ -17,10 +17,7 @@ void VelocityEngine::initialize() {
     // Initialize acquisition buffers
     memset(&g_acquisition, 0, sizeof(g_acquisition));
     
-    Serial.println("VelocityEngine: Initialized for 4x16 MUX configuration");
-    Serial.print("Thresholds: Low="); Serial.print(getThresholdLow());
-    Serial.print(", High="); Serial.print(kThresholdHigh);
-    Serial.print(", Release="); Serial.println(kThresholdRelease);
+    // Debug prints removed
 }
 
 void VelocityEngine::processKey(uint8_t mux, uint8_t channel, 
@@ -183,21 +180,14 @@ void VelocityEngine::sendNoteOn(uint8_t note, uint8_t velocity, uint8_t mux, uin
     usbMIDI.sendNoteOn(note, velocity, 1); // Channel 1
     
     // Debug output uniquement pour canal 6
-    if (channel == 6) {
-        Serial.print("NOTE ON: CH"); Serial.print(channel);
-        Serial.print(" Note="); Serial.print(note);
-        Serial.print(" Vel="); Serial.println(velocity);
-    }
+    // Debug removed
 }
 
 void VelocityEngine::sendNoteOff(uint8_t note, uint8_t mux, uint8_t channel) {
     usbMIDI.sendNoteOff(note, 0, 1); // Channel 1
     
     // Debug output uniquement pour canal 6
-    if (channel == 6) {
-        Serial.print("NOTE OFF: CH"); Serial.print(channel);
-        Serial.print(" Note="); Serial.println(note);
-    }
+    // Debug removed
 }
 
 void VelocityEngine::resetKey(KeyData& key) {
@@ -215,44 +205,15 @@ void VelocityEngine::logStateChange(uint8_t mux, uint8_t channel,
                                    KeyState old_state, KeyState new_state, 
                                    uint16_t adc, uint8_t velocity) {
     // Debug uniquement pour le canal surveillé
-    if (channel == 6) {  // Canal 6 seulement
-        Serial.print("CH"); Serial.print(channel);
-        Serial.print(": "); Serial.print(getStateName(old_state));
-        Serial.print("→"); Serial.print(getStateName(new_state));
-        Serial.print(" ADC="); Serial.print(adc);
-        if (velocity > 0) {
-            Serial.print(" Vel="); Serial.print(velocity);
-        }
-        Serial.println();
-    }
+    // Debug removed
 }
 
 void VelocityEngine::printKeyStats(uint8_t mux, uint8_t channel) {
     if (mux >= N_MUX || channel >= N_CH) return;
     
-    KeyData& key = g_keys[mux][channel];
-    Serial.print("CH"); Serial.print(channel);
-    Serial.print(": State="); Serial.print(getStateName(key.state));
-    Serial.print(" ADC="); Serial.print(key.last_adc);
-    Serial.print(" Triggers="); Serial.print(key.total_triggers);
-    Serial.print(" FalseStarts="); Serial.println(key.false_starts);
+    // Debug removed
 }
 
 void VelocityEngine::printAllActiveKeys() {
-    bool found_active = false;
-    for (uint8_t mux = 0; mux < N_MUX; mux++) {
-        for (uint8_t channel = 0; channel < N_CH; channel++) {
-            KeyData& key = g_keys[mux][channel];
-            if (key.state != KeyState::IDLE || key.total_triggers > 0) {
-                if (!found_active) {
-                    Serial.println("=== Active Keys ===");
-                    found_active = true;
-                }
-                printKeyStats(mux, channel);
-            }
-        }
-    }
-    if (!found_active) {
-        Serial.println("No active keys");
-    }
+    // Debug removed
 }
