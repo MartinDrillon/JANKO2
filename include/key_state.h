@@ -1,7 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include "config.h"
-#include "calibration.h"
+// Removed calibration include (thresholds not needed for state struct definitions)
 
 // === Key State Machine ===
 enum class KeyState : uint8_t {

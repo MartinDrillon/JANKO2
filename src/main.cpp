@@ -59,15 +59,10 @@ static constexpr ChannelGPIO CHANNEL_LUT[16] = {
 // === USB MIDI is built-in on Teensy ===
 // No additional setup required
 
-// === Calibration State ===
-enum class RunState { CALIBRATING, RUN };
-static RunState gState = RunState::CALIBRATING;
-constexpr uint32_t kCalibDurationMs = 2000;
-static uint32_t gCalibT0 = 0;
-
-// Calibration histogram for median calculation (10-bit ADC = 1024 values)
-static uint32_t gHist[1024] = {0};
-static uint32_t gSamplesTotal = 0;
+// === Calibration Removed ===
+// Dynamic calibration logic has been fully removed in the simplified velocity design.
+// Thresholds are now fixed constants defined in calibration.h. All related state,
+// histograms, and timing have been stripped to reduce latency.
 
 // --- Scanning State ---
 uint8_t currentChannel = 0;
@@ -76,8 +71,7 @@ uint32_t lastScanUs = 0;
 
 
 // --- Function Declarations ---
-uint16_t calculateMedian();
-void finishCalibration();
+// (Calibration functions removed)
 
 // --- Dual MUX Control Functions ---
 // --- Ultra-Fast MUX Channel Setting with LUT ---
@@ -178,27 +172,9 @@ void scanChannelDualADC(uint8_t channel) {
             delayMicroseconds(1);
         }
 
-    // === Calibration data collection ===
-    if (gState == RunState::CALIBRATING) {
-        // Collect all ADC values in histogram for median calculation
-        for (uint8_t mux = 0; mux < 8; mux++) {
-            uint16_t val = values[mux];
-            // Clamp to 10-bit range (safety check)
-            if (val > 1023) val = 1023;
-            gHist[val]++;
-            gSamplesTotal++;
-        }
-    }
-    
-    // Process all 8 keys
-    if (gState == RunState::RUN) {
-        for (uint8_t mux = 0; mux < 8; mux++) {
-            VelocityEngine::processKey(mux, channel, values[mux], timestamp_us);
-        }
-    } else {
-        for (uint8_t mux = 0; mux < 8; mux++) {
-            g_acquisition.workingValues[mux][channel] = values[mux];
-        }
+    // Process all 8 keys (always active; no calibration phase)
+    for (uint8_t mux = 0; mux < 8; mux++) {
+        VelocityEngine::processKey(mux, channel, values[mux], timestamp_us);
     }
 
     // Optional debug print
@@ -217,10 +193,8 @@ void setup() {
     // Initialize LEDs
     simpleLedsInit();
     
-    // Start calibration: turn on red LEDs 3, 4, 5
-    setCalibrationLeds(true);
-    gCalibT0 = millis();
-    // Calibration start banner removed
+    // Calibration LEDs no longer used (ensure off)
+    setCalibrationLeds(false);
     
     // Initialize velocity engine
     VelocityEngine::initialize();
@@ -236,12 +210,7 @@ void setup() {
 
 void loop() {
     const uint32_t nowUs = micros();
-    const uint32_t nowMs = millis();
-
-    // === Calibration state management ===
-    if (gState == RunState::CALIBRATING && (nowMs - gCalibT0 >= kCalibDurationMs)) {
-        finishCalibration();
-    }
+    // (Calibration state management removed)
 
     // === Main scanning loop ===
     if (nowUs - lastScanUs >= kScanIntervalMicros) {
@@ -266,39 +235,7 @@ void loop() {
     simpleLedsTask();
 }
 
-// === Calibration Functions ===
-uint16_t calculateMedian() {
-    if (gSamplesTotal == 0) {
-        return 650; // Return default value
-    }
-    
-    uint32_t target = gSamplesTotal / 2;
-    uint32_t cumSum = 0;
-    
-    for (uint16_t i = 0; i < 1024; i++) {
-        cumSum += gHist[i];
-        if (cumSum >= target) {
-            return i;
-        }
-    }
-    
-    // Fallback (should not happen)
-    return 650;
-}
-
-void finishCalibration() {
-    // Calculate median from histogram
-    uint16_t median = calculateMedian();
-    
-    // Update runtime threshold
-    gThresholdLow = median;
-    
-    // Turn off calibration LEDs
-    setCalibrationLeds(false);
-    
-    // Change state to RUN
-    gState = RunState::RUN;
-}
+// (Calibration helper functions removed)
 
 
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
