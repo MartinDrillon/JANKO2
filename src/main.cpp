@@ -9,6 +9,9 @@
 #include "calibration.h"
 #include "note_map.h"
 #include "key_state.h"
+#if DEBUG_ADC_MONITOR
+#include "adc_monitor.h"
+#endif
 
 // === ADC Instance ===
 static ADC gAdc;
@@ -195,6 +198,10 @@ void setup() {
     
     // Calibration LEDs no longer used (ensure off)
     setCalibrationLeds(false);
+
+#if DEBUG_ADC_MONITOR
+    AdcMonitor::begin();
+#endif
     
     // Initialize velocity engine
     VelocityEngine::initialize();
@@ -233,6 +240,10 @@ void loop() {
     
     // Update LEDs
     simpleLedsTask();
+
+#if DEBUG_ADC_MONITOR
+    AdcMonitor::printPeriodic();
+#endif
 }
 
 // (Calibration helper functions removed)

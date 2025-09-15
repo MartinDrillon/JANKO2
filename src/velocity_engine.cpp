@@ -1,5 +1,9 @@
 #include "velocity_engine.h"
 #include "velocity_calc.h"
+#include "config.h"
+#if DEBUG_ADC_MONITOR
+#include "adc_monitor.h"
+#endif
 
 // === Global State Arrays Definition ===
 KeyData g_keys[N_MUX][N_CH];
@@ -29,6 +33,10 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
     // Legacy acquisition storage (kept to avoid touching scan logic elsewhere)
     g_acquisition.workingValues[mux][channel] = adc_value;
     g_acquisition.t_sample_us[mux][channel] = timestamp_us;
+
+#if DEBUG_ADC_MONITOR
+    AdcMonitor::updateIfMatch(mux, channel, adc_value, timestamp_us);
+#endif
     
     KeyData& key = g_keys[mux][channel];
     KeyState oldState = key.state;

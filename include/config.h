@@ -104,3 +104,23 @@ static constexpr uint32_t kFrameTargetHz = 3125;     // 3.125kHz frame rate targ
 #define DEBUG_PRINT_VALUES 1
 #endif
 
+// === ADC Monitor (optional) ===
+// Active si DEBUG_ADC_MONITOR = 1 : le firmware envoie toutes les DEBUG_ADC_MONITOR_INTERVAL_MS
+// la dernière valeur ADC brute (0..1023) pour le MUX et la channel ciblés.
+// Configuration :
+//   DEBUG_ADC_MONITOR_MUX    : index MUX (0..7)
+//   DEBUG_ADC_MONITOR_CHANNEL: index channel (0..15)
+//   DEBUG_ADC_MONITOR_INTERVAL_MS : période d'impression
+#ifndef DEBUG_ADC_MONITOR
+#define DEBUG_ADC_MONITOR 1
+#endif
+#ifndef DEBUG_ADC_MONITOR_MUX
+#define DEBUG_ADC_MONITOR_MUX 3
+#endif
+#ifndef DEBUG_ADC_MONITOR_CHANNEL
+#define DEBUG_ADC_MONITOR_CHANNEL 0
+#endif
+#ifndef DEBUG_ADC_MONITOR_INTERVAL_MS
+#define DEBUG_ADC_MONITOR_INTERVAL_MS 100
+#endif
+
