@@ -9,6 +9,7 @@
 #include "calibration.h"
 #include "note_map.h"
 #include "key_state.h"
+#include <imxrt.h>  // pour DWT cycle counter (Teensy 4.x)
 #if DEBUG_ADC_MONITOR
 #include "adc_monitor.h"
 #endif
@@ -70,6 +71,26 @@ static constexpr ChannelGPIO CHANNEL_LUT[16] = {
 // --- Scanning State ---
 uint8_t currentChannel = 0;
 uint32_t lastScanUs = 0;
+// Frame rate instrumentation
+#if DEBUG_FRAME_RATE
+static uint32_t gFrameCount = 0;
+static uint32_t gLastFrameReportMs = 0;
+#endif
+// Profiling instrumentation
+#if DEBUG_PROFILE_SCAN
+static uint64_t gAccumChannelTimeUs = 0;   // somme durées individuelles channels
+static uint32_t gChannelSamples = 0;       // nombre de channels mesurés
+static uint32_t gFrameAccumTimeUs = 0;     // somme durées frames
+static uint32_t gFrameSamples = 0;         // nombre de frames mesurées
+static uint32_t gFrameStartUs = 0;         // début frame courante
+static uint32_t gChannelMaxUs = 0;         // max channel observé sur intervalle
+#endif
+// Duplicate detection instrumentation
+#if DEBUG_DUPLICATE_DETECT
+static uint32_t gDuplicatePairs = 0;          // total paires détectées identiques
+static uint32_t gDuplicateFrames = 0;         // frames contenant au moins 1 duplication
+static uint32_t gFramesSinceDupPrint = 0;     // compteur de frames pour périodicité
+#endif
 
 
 
@@ -130,6 +151,16 @@ void initializeDualMux() {
     // Serial prints removed for performance
 }
 
+// --- Cycle counter init (DWT) ---
+static inline void enableCycleCounter() {
+    // Teensy 4.x (IMXRT) expose ARM DWT registers via imxrt.h macros
+    // ARM_DEMCR_TRCENA enables trace (needed for DWT cycle counter)
+    ARM_DEMCR |= ARM_DEMCR_TRCENA;    // enable trace
+    ARM_DWT_CYCCNT = 0;               // reset cycle counter
+    ARM_DWT_CTRL |= 1;                // enable CYCCNT (bit 0)
+}
+static inline uint32_t readCycleCounter() { return ARM_DWT_CYCCNT; }
+
 // --- Optimized Scanning with LUT and Synchronized ADC ---
 void scanChannelDualADC(uint8_t channel) {
     // Optional debug channel freeze
@@ -171,14 +202,34 @@ void scanChannelDualADC(uint8_t channel) {
             #if DEBUG_PRINT_PAIRS
                 // Pair debug removed
             #endif
-            // Micro pause to allow next pair stabilization (avoid cloned samples)
-            delayMicroseconds(1);
+            // Pause optionnelle entre paires pour éviter des lectures clonées.
+            if (kPerPairDelayMicros > 0) {
+                delayMicroseconds(kPerPairDelayMicros);
+            } else if (kPerPairDelayCycles > 0) {
+                // Attente fine en cycles CPU
+                uint32_t start = readCycleCounter();
+                while ((readCycleCounter() - start) < kPerPairDelayCycles) { __asm__ volatile("nop"); }
+            }
         }
 
     // Process all 8 keys (always active; no calibration phase)
     for (uint8_t mux = 0; mux < 8; mux++) {
         VelocityEngine::processKey(mux, channel, values[mux], timestamp_us);
     }
+
+#if DEBUG_DUPLICATE_DETECT
+    // Détection duplication: compare valeurs[0..3] vs valeurs[4..7]
+    bool frameDup = false; // dans ce channel
+    for (int i=0;i<4;i++) {
+        int16_t d = (int16_t)values[i] - (int16_t)values[4+i];
+        if (d < 0) d = -d;
+        if (d <= (int16_t)kDuplicateTolerance) {
+            gDuplicatePairs++;
+            frameDup = true;
+        }
+    }
+    if (frameDup) gDuplicateFrames++;
+#endif
 
     // Optional debug print
     // Value debug removed
@@ -192,6 +243,9 @@ void setup() {
     initializeDualMux();
     setMuxChannel(currentChannel);
     lastScanUs = micros();
+#if DEBUG_PROFILE_SCAN
+    gFrameStartUs = lastScanUs;
+#endif
     
     // Initialize LEDs
     simpleLedsInit();
@@ -202,9 +256,15 @@ void setup() {
 #if DEBUG_ADC_MONITOR
     AdcMonitor::begin();
 #endif
+
+#if DEBUG_FRAME_RATE && DEBUG_FRAME_RATE_TOGGLE_LED
+    pinMode(13, OUTPUT); // LED intégrée Teensy
+    digitalWriteFast(13, LOW);
+#endif
     
     // Initialize velocity engine
     VelocityEngine::initialize();
+    enableCycleCounter();
     
     // Ready banner removed
     
@@ -220,26 +280,146 @@ void loop() {
     // (Calibration state management removed)
 
     // === Main scanning loop ===
-    if (nowUs - lastScanUs >= kScanIntervalMicros) {
-        lastScanUs = nowUs;
-        
-        // Scan current channel
+    // Prépare éventuel changement LED (sans show())
+    simpleLedsUpdateInputState();
+    if (kContinuousScan) {
+        // Pas d'attente: enchaîne directement
+        uint32_t t0 = micros();
         scanChannelDualADC(currentChannel);
-        
-        // Advance to next channel
+        uint32_t t1 = micros();
+#if DEBUG_PROFILE_SCAN
+        uint32_t chDur = t1 - t0;
+        gAccumChannelTimeUs += chDur;
+        gChannelSamples++;
+        if (chDur > gChannelMaxUs) gChannelMaxUs = chDur;
+#endif
         currentChannel = (currentChannel + 1) % N_CH;
-        
-        // Frame completion: all channels scanned
         if (currentChannel == 0) {
             g_acquisition.swapBuffers();
+#if DEBUG_PROFILE_SCAN
+            uint32_t nowUsFrame = micros();
+            uint32_t frameDur = nowUsFrame - gFrameStartUs;
+            gFrameStartUs = nowUsFrame;
+            gFrameAccumTimeUs += frameDur;
+            gFrameSamples++;
+            if (gFrameSamples >= DEBUG_PROFILE_INTERVAL_FRAMES) {
+                // Calculs moyens
+                uint32_t avgFrameUs = gFrameAccumTimeUs / gFrameSamples;
+                uint32_t avgChannelUs = gChannelSamples ? (uint32_t)(gAccumChannelTimeUs / gChannelSamples) : 0;
+                Serial.printf("[PROFILE] frames=%lu avgFrame=%luus avgCh=%luus maxCh=%luus fps_est=%lu\n",
+                              (unsigned long)gFrameSamples,
+                              (unsigned long)avgFrameUs,
+                              (unsigned long)avgChannelUs,
+                              (unsigned long)gChannelMaxUs,
+                              (unsigned long)(avgFrameUs ? (1000000UL / avgFrameUs) : 0));
+                // reset interval
+                gFrameAccumTimeUs = 0;
+                gFrameSamples = 0;
+                gAccumChannelTimeUs = 0;
+                gChannelSamples = 0;
+                gChannelMaxUs = 0;
+            }
+#endif
+#if DEBUG_FRAME_RATE
+            gFrameCount++;
+#if DEBUG_FRAME_RATE_TOGGLE_LED
+            digitalToggleFast(13);
+#endif
+            uint32_t nowMs = millis();
+            if (nowMs - gLastFrameReportMs >= DEBUG_FRAME_RATE_INTERVAL_MS) {
+                // Impression minimaliste (peut être filtrée si besoin)
+                Serial.printf("FrameRate=%lu fps\n", gFrameCount * 1000UL / (nowMs - gLastFrameReportMs));
+                gLastFrameReportMs = nowMs;
+                gFrameCount = 0;
+            }
+#endif
+    // Flush LED strip une seule fois par frame (si changement)
+    simpleLedsFrameFlush();
+#if DEBUG_DUPLICATE_DETECT
+    gFramesSinceDupPrint++;
+    if (gFramesSinceDupPrint >= DEBUG_DUPLICATE_PRINT_INTERVAL_FRAMES) {
+    Serial.printf("[DUP] frames=%lu dupFrames=%lu dupPairs=%lu ratioFrames=%.4f ratioPairs=%.4f\n",
+        (unsigned long)gFramesSinceDupPrint,
+        (unsigned long)gDuplicateFrames,
+        (unsigned long)gDuplicatePairs,
+        gFramesSinceDupPrint ? (double)gDuplicateFrames / (double)gFramesSinceDupPrint : 0.0,
+    gFramesSinceDupPrint ? (double)gDuplicatePairs / (double)(gFramesSinceDupPrint*4) : 0.0);
+        gFramesSinceDupPrint = 0;
+        gDuplicateFrames = 0;
+        gDuplicatePairs = 0;
+    }
+#endif
+        }
+    } else if (nowUs - lastScanUs >= kScanIntervalMicros) {
+        lastScanUs = nowUs;
+        uint32_t t0 = micros();
+        scanChannelDualADC(currentChannel);
+        uint32_t t1 = micros();
+#if DEBUG_PROFILE_SCAN
+        uint32_t chDur = t1 - t0;
+        gAccumChannelTimeUs += chDur;
+        gChannelSamples++;
+        if (chDur > gChannelMaxUs) gChannelMaxUs = chDur;
+#endif
+        currentChannel = (currentChannel + 1) % N_CH;
+        if (currentChannel == 0) {
+            g_acquisition.swapBuffers();
+#if DEBUG_PROFILE_SCAN
+            uint32_t nowUsFrame = micros();
+            uint32_t frameDur = nowUsFrame - gFrameStartUs;
+            gFrameStartUs = nowUsFrame;
+            gFrameAccumTimeUs += frameDur;
+            gFrameSamples++;
+            if (gFrameSamples >= DEBUG_PROFILE_INTERVAL_FRAMES) {
+                uint32_t avgFrameUs = gFrameAccumTimeUs / gFrameSamples;
+                uint32_t avgChannelUs = gChannelSamples ? (uint32_t)(gAccumChannelTimeUs / gChannelSamples) : 0;
+                Serial.printf("[PROFILE] frames=%lu avgFrame=%luus avgCh=%luus maxCh=%luus fps_est=%lu\n",
+                              (unsigned long)gFrameSamples,
+                              (unsigned long)avgFrameUs,
+                              (unsigned long)avgChannelUs,
+                              (unsigned long)gChannelMaxUs,
+                              (unsigned long)(avgFrameUs ? (1000000UL / avgFrameUs) : 0));
+                gFrameAccumTimeUs = 0;
+                gFrameSamples = 0;
+                gAccumChannelTimeUs = 0;
+                gChannelSamples = 0;
+                gChannelMaxUs = 0;
+            }
+#endif
+#if DEBUG_FRAME_RATE
+            gFrameCount++;
+#if DEBUG_FRAME_RATE_TOGGLE_LED
+            digitalToggleFast(13);
+#endif
+            uint32_t nowMs = millis();
+            if (nowMs - gLastFrameReportMs >= DEBUG_FRAME_RATE_INTERVAL_MS) {
+                Serial.printf("FrameRate=%lu fps\n", gFrameCount * 1000UL / (nowMs - gLastFrameReportMs));
+                gLastFrameReportMs = nowMs;
+                gFrameCount = 0;
+            }
+#endif
+    // Flush LED strip une seule fois par frame (si changement)
+    simpleLedsFrameFlush();
+#if DEBUG_DUPLICATE_DETECT
+    gFramesSinceDupPrint++;
+    if (gFramesSinceDupPrint >= DEBUG_DUPLICATE_PRINT_INTERVAL_FRAMES) {
+    Serial.printf("[DUP] frames=%lu dupFrames=%lu dupPairs=%lu ratioFrames=%.4f ratioPairs=%.4f\n",
+        (unsigned long)gFramesSinceDupPrint,
+        (unsigned long)gDuplicateFrames,
+        (unsigned long)gDuplicatePairs,
+        gFramesSinceDupPrint ? (double)gDuplicateFrames / (double)gFramesSinceDupPrint : 0.0,
+    gFramesSinceDupPrint ? (double)gDuplicatePairs / (double)(gFramesSinceDupPrint*4) : 0.0);
+        gFramesSinceDupPrint = 0;
+        gDuplicateFrames = 0;
+        gDuplicatePairs = 0;
+    }
+#endif
         }
     }
 
     // === Handle other tasks ===
     // USB MIDI is handled automatically
-    
-    // Update LEDs
-    simpleLedsTask();
+    // (LEDs déjà flush en fin de frame si nécessaire)
 
 #if DEBUG_ADC_MONITOR
     AdcMonitor::printPeriodic();

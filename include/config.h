@@ -87,10 +87,47 @@ static constexpr uint8_t kAdcResolution = 10; // 10-bit ADC (0-1023)
 static constexpr uint8_t kMidiChannel = 1; // MIDI channel (1-16)
 
 // Scanning Configuration - Target 2 synchronized pairs optimization
-static constexpr uint32_t kScanIntervalMicros = 3;  // 3µs per channel (optimized for speed)
-static constexpr uint32_t kSettleMicros = 5;         // Increased to 5µs settling (test to avoid cloned readings)
-static constexpr uint32_t kFrameTargetHz = 3125;     // 3.125kHz frame rate target (optimized) 
-
+// Base interval entre deux channels (si kContinuousScan == false). Peut descendre à 0.
+static constexpr uint32_t kScanIntervalMicros = 0;   // 1µs par channel (peut être mis à 0)
+// Délai après changement des lignes d'adresse MUX avant le premier read synchronisé.
+// Mettre à 0 pour tester la limite physique (le 4067 ajoute typiquement ~100ns tSW + source impedance).
+static constexpr uint32_t kSettleMicros = 0;         // 1µs actuel; essayer 0 si pas de "cloned readings"
+// Délai optionnel entre chaque paire synchronisée (4 paires * 2 ADC). 1 supprimait des duplications.
+// Mettre à 0 pour vitesse max; si valeurs dupliquées réapparaissent, revenir à 1.
+static constexpr uint32_t kPerPairDelayMicros = 0;   // Délai en microsecondes (grossier). Si 0 on peut utiliser kPerPairDelayCycles.
+// Délai ultra-fin en CYCLES CPU (Teensy 4.1 @600 MHz ⇒ 1 µs ≈ 600 cycles). Permet <1 µs.
+// Utilisé uniquement si kPerPairDelayMicros == 0 et kPerPairDelayCycles > 0.
+static constexpr uint32_t kPerPairDelayCycles = 300;   // Exemple: 120 (~0.2 µs), 300 (~0.5 µs), 600 (~1.0 µs)
+// Mode scan continu : ignore kScanIntervalMicros et enchaîne les channels sans attente active.
+static constexpr bool kContinuousScan = true;       // Passer à true pour pousser au maximum
+// Objectif théorique de fréquence frawme (informative seulement)
+static constexpr uint32_t kFrameTargetHz = 3125;     // 3.125kHz cible (maj selon nouveaux réglages)
+// === Détection duplications de paires (valeurs clonées entre MUX0..3 et MUX4..7) ===
+#ifndef DEBUG_DUPLICATE_DETECT
+#define DEBUG_DUPLICATE_DETECT 0   // 1=active détection & stats
+#endif
+#ifndef DEBUG_DUPLICATE_PRINT_INTERVAL_FRAMES
+#define DEBUG_DUPLICATE_PRINT_INTERVAL_FRAMES 1000  // Affiche toutes les X frames
+#endif
+// Tolérance (LSB) entre valeurs[i] et valeurs[4+i] pour considérer « identique » (ADC bruit)
+static constexpr uint16_t kDuplicateTolerance = 1;
+// === Profiling (mesures internes) ===
+#ifndef DEBUG_PROFILE_SCAN
+#define DEBUG_PROFILE_SCAN 1   // 1=active mesures temps channel/frame
+#endif
+#ifndef DEBUG_PROFILE_INTERVAL_FRAMES
+#define DEBUG_PROFILE_INTERVAL_FRAMES 200  // Regroupe sur 200 frames avant impression
+#endif
+// === Frame rate debug ===
+#ifndef DEBUG_FRAME_RATE
+#define DEBUG_FRAME_RATE 1          // 1=imprime la fréquence réelle (frames/s)
+#endif
+#ifndef DEBUG_FRAME_RATE_INTERVAL_MS
+#define DEBUG_FRAME_RATE_INTERVAL_MS 1000  // Période d'affichage
+#endif
+#ifndef DEBUG_FRAME_RATE_TOGGLE_LED
+#define DEBUG_FRAME_RATE_TOGGLE_LED 0  // 1 = toggle LED à chaque frame (diagnostic scope)
+#endif
 // === Debug Options ===
 // Freeze scanning to a fixed logical channel (0..15). Set to -1 for normal operation.
 // Set to 6 to freeze scanning on logical channel 6 for debug logging
@@ -112,15 +149,15 @@ static constexpr uint32_t kFrameTargetHz = 3125;     // 3.125kHz frame rate targ
 //   DEBUG_ADC_MONITOR_CHANNEL: index channel (0..15)
 //   DEBUG_ADC_MONITOR_INTERVAL_MS : période d'impression
 #ifndef DEBUG_ADC_MONITOR
-#define DEBUG_ADC_MONITOR 1
+#define DEBUG_ADC_MONITOR 0
 #endif
 #ifndef DEBUG_ADC_MONITOR_MUX
-#define DEBUG_ADC_MONITOR_MUX 3
+#define DEBUG_ADC_MONITOR_MUX 4
 #endif
 #ifndef DEBUG_ADC_MONITOR_CHANNEL
 #define DEBUG_ADC_MONITOR_CHANNEL 0
 #endif
 #ifndef DEBUG_ADC_MONITOR_INTERVAL_MS
-#define DEBUG_ADC_MONITOR_INTERVAL_MS 100
+#define DEBUG_ADC_MONITOR_INTERVAL_MS 1
 #endif
 

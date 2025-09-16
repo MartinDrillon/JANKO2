@@ -1,9 +1,6 @@
 #include "velocity_engine.h"
 #include "velocity_calc.h"
 #include "config.h"
-#if DEBUG_ADC_MONITOR
-#include "adc_monitor.h"
-#endif
 
 // === Global State Arrays Definition ===
 KeyData g_keys[N_MUX][N_CH];
@@ -19,7 +16,7 @@ void VelocityEngine::initialize() {
         }
     }
     
-    // Acquisition buffer left as-is but zeroed (legacy compatibility)
+    // Zero acquisition buffers
     memset(&g_acquisition, 0, sizeof(g_acquisition));
 }
 
@@ -30,13 +27,8 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
         return;
     }
     
-    // Legacy acquisition storage (kept to avoid touching scan logic elsewhere)
     g_acquisition.workingValues[mux][channel] = adc_value;
     g_acquisition.t_sample_us[mux][channel] = timestamp_us;
-
-#if DEBUG_ADC_MONITOR
-    AdcMonitor::updateIfMatch(mux, channel, adc_value, timestamp_us);
-#endif
     
     KeyData& key = g_keys[mux][channel];
     KeyState oldState = key.state;
@@ -83,7 +75,7 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
             }
             break;
         case KeyState::REARMED:
-            if (adc_value < (kThresholdLow - 20)) {
+            if (adc_value < (kThresholdLow + 20)) {
                 key.state = KeyState::IDLE; // fully released
             } else if (adc_value >= kThresholdLow) {
                 // immediate retrigger path
@@ -121,8 +113,6 @@ void VelocityEngine::resetKey(KeyData& key) {
     key.note_on_sent = false;
     key.current_note = 0;
     key.current_velocity = 0;
-    key.stable_up_count = 0; // legacy fields kept but unused
-    key.stable_down_count = 0;
 }
 
 void VelocityEngine::printKeyStats(uint8_t, uint8_t) {}
