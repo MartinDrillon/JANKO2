@@ -15,6 +15,9 @@ inline uint8_t computeVelocity(uint16_t delta_adc, uint32_t dt_us) {
     float norm = (speed - kMinSpeed) / (kMaxSpeed - kMinSpeed);
     if (norm < 0.f) norm = 0.f;
     if (norm > 1.f) norm = 1.f;
+    // Courbe: applique un exposant (gamma) pour rendre la réponse plus sensible
+    // aux vitesses lentes quand gamma < 1.0
+    norm = powf(norm, kVelocityGamma);
     uint8_t vel = 1 + static_cast<uint8_t>(norm * 126.0f);
     if (vel < 1) vel = 1;
     if (vel > 127) vel = 127;

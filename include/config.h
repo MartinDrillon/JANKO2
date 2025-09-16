@@ -161,3 +161,9 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 #define DEBUG_ADC_MONITOR_INTERVAL_MS 1
 #endif
 
+// === Velocity curve shaping ===
+// Exposant appliqué à la valeur normalisée (0..1) avant mapping 1..127.
+// <1.0 rend les faibles vitesses plus sensibles (valeurs de vélocité plus élevées plus tôt)
+// >1.0 compresse le bas et étire le haut.
+static constexpr float kVelocityGamma = 0.30f; // Option A proposée
+
