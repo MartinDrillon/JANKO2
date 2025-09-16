@@ -97,7 +97,7 @@ static constexpr uint32_t kSettleMicros = 0;         // 1µs actuel; essayer 0 s
 static constexpr uint32_t kPerPairDelayMicros = 0;   // Délai en microsecondes (grossier). Si 0 on peut utiliser kPerPairDelayCycles.
 // Délai ultra-fin en CYCLES CPU (Teensy 4.1 @600 MHz ⇒ 1 µs ≈ 600 cycles). Permet <1 µs.
 // Utilisé uniquement si kPerPairDelayMicros == 0 et kPerPairDelayCycles > 0.
-static constexpr uint32_t kPerPairDelayCycles = 300;   // Exemple: 120 (~0.2 µs), 300 (~0.5 µs), 600 (~1.0 µs)
+static constexpr uint32_t kPerPairDelayCycles = 100;   // Exemple: 120 (~0.2 µs), 300 (~0.5 µs), 600 (~1.0 µs)
 // Mode scan continu : ignore kScanIntervalMicros et enchaîne les channels sans attente active.
 static constexpr bool kContinuousScan = true;       // Passer à true pour pousser au maximum
 // Objectif théorique de fréquence frawme (informative seulement)
