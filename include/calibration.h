@@ -1,14 +1,53 @@
 #pragma once
 #include <Arduino.h>
+#include "config.h" // pour N_MUX / N_CH
 
 // === ADC Configuration ===
 // Référence ADC : 10 bits = 0..1023, Vref = 3.3V
 
-// === Seuils fixes simplifiés (plus de calibration dynamique) ===
-static constexpr uint16_t kThresholdLow     = 745;  // activation / début suivi
-static constexpr uint16_t kThresholdHigh    = 915;  // déclenchement Note On
-static constexpr uint16_t kThresholdRelease = 900;  // retour Note Off
+// === Calibration dynamique par touche (Phase 1) ===
+namespace Calib {
+	// Constantes Phase1 (Phase2 en ajoutera d'autres)
+	constexpr uint16_t kLowMarginCounts  = 20;    // Low = base + marge (placeholder)
+	constexpr uint16_t kMinSwingCounts   = 150;   // High >= Low + min swing
+	constexpr uint16_t kHighStartDefault = 915;   // High initial si pas encore appris
+	constexpr uint16_t kHighTargetMargin = 30;    // cible = peak - margin
+	constexpr float    kHighAlpha        = 0.85f; // EMA lente
+	constexpr float    kHighAlphaFast    = 0.60f; // EMA rapide premières notes
+	constexpr uint8_t  kHighFastNotes    = 3;     // nb notes « fast »
+	constexpr uint16_t kReleaseDelta     = 50;    // Release = High - delta
+		// Phase2
+		constexpr uint32_t kMedianWindowMs   = 2000;  // collecte médiane Low
+}
 
-// Compat shim: certaines parties du code appellent encore getThresholdLow()
-inline uint16_t getThresholdLow() { return kThresholdLow; }
+// Tables runtime (initialisées dans calibration.cpp)
+extern uint16_t gThLow[N_MUX][N_CH];
+extern uint16_t gThHigh[N_MUX][N_CH];
+extern uint8_t  gHighFastSeen[N_MUX][N_CH];
+
+// Initialisation statique (Phase1): valeurs de base avant médiane (Phase2)
+void calibrationInitStatic();
+// Mise à jour High après NoteOff avec peak détecté
+void updateHighAfterNote(uint8_t mux, uint8_t ch, uint16_t peak);
+// Phase2 API
+void calibrationStartCollectLow();
+void calibrationFrameIngest(const uint16_t frameValues[N_MUX][N_CH]);
+void calibrationService();
+bool calibrationIsCollecting();
+bool calibrationIsRunning();
+
+// Getters inline rapides
+inline uint16_t calibLow(uint8_t m, uint8_t c) {
+	return gThLow[m][c];
+}
+inline uint16_t calibHigh(uint8_t m, uint8_t c) {
+	return gThHigh[m][c];
+}
+inline uint16_t calibRelease(uint8_t m, uint8_t c) {
+	uint16_t h = gThHigh[m][c];
+	return (h > Calib::kReleaseDelta) ? (uint16_t)(h - Calib::kReleaseDelta) : 0;
+}
+
+// Compat (si ancien code appelle encore ces noms globaux)
+inline uint16_t getThresholdLow() { return calibLow(0,0); }
 

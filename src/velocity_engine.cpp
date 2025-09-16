@@ -1,6 +1,7 @@
 #include "velocity_engine.h"
 #include "velocity_calc.h"
 #include "config.h"
+#include "calibration.h"
 
 // === Global State Arrays Definition ===
 KeyData g_keys[N_MUX][N_CH];
@@ -38,21 +39,27 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
     key.last_sample_us = timestamp_us;
     
     // State machine dispatch
+    uint16_t thLow  = calibLow(mux, channel);
+    uint16_t thHigh = calibHigh(mux, channel);
+    uint16_t thRel  = calibRelease(mux, channel);
+
     switch (key.state) {
         case KeyState::IDLE:
-            if (adc_value >= kThresholdLow) {
-                key.state = KeyState::TRACKING; // Start timing
+            if (adc_value >= thLow) {
+                key.state = KeyState::TRACKING;
                 key.adc_start = adc_value;
                 key.t_start_us = timestamp_us;
+                key.current_velocity = 0;
+                key.peak_adc = adc_value; // nouveau champ (sera ajouté dans struct)
             }
             break;
         case KeyState::TRACKING: {
-            if (adc_value < kThresholdLow) {
-                // aborted partial press
+            if (adc_value < thLow) {
                 resetKey(key);
                 break;
             }
-            if (adc_value >= kThresholdHigh) {
+            if (adc_value > key.peak_adc) key.peak_adc = adc_value;
+            if (adc_value >= thHigh) {
                 int8_t note = effectiveNote(mux, channel);
                 if (note == DISABLED) { resetKey(key); break; }
                 uint16_t delta_adc = (adc_value > key.adc_start) ? (adc_value - key.adc_start) : 1;
@@ -65,23 +72,25 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
                 key.state = KeyState::HELD;
                 key.total_triggers++;
             }
-            break;
-        }
+            break; }
         case KeyState::HELD:
-            if (adc_value < kThresholdRelease) {
+            if (adc_value > key.peak_adc) key.peak_adc = adc_value;
+            if (adc_value < thRel) {
                 sendNoteOff(key.current_note, mux, channel);
                 key.note_on_sent = false;
+                // mise à jour adaptative du High
+                updateHighAfterNote(mux, channel, key.peak_adc);
                 key.state = KeyState::REARMED;
             }
             break;
         case KeyState::REARMED:
-            if (adc_value < (kThresholdLow + 20)) {
-                key.state = KeyState::IDLE; // fully released
-            } else if (adc_value >= kThresholdLow) {
-                // immediate retrigger path
+            if (adc_value < (thLow - 10)) {
+                key.state = KeyState::IDLE; // fully released deep
+            } else if (adc_value >= thLow) {
                 key.state = KeyState::TRACKING;
                 key.adc_start = adc_value;
                 key.t_start_us = timestamp_us;
+                key.peak_adc = adc_value;
             }
             break;
     }

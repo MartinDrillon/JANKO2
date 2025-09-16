@@ -9,6 +9,7 @@
 #include "calibration.h"
 #include "note_map.h"
 #include "key_state.h"
+#include "calibration.h"
 #include <imxrt.h>  // pour DWT cycle counter (Teensy 4.x)
 #if DEBUG_ADC_MONITOR
 #include "adc_monitor.h"
@@ -268,6 +269,10 @@ void setup() {
     
     // Initialize velocity engine
     VelocityEngine::initialize();
+    // Init static thresholds (Phase1 dynamique)
+    calibrationInitStatic();
+    // Phase2: démarrer collecte médiane Low
+    calibrationStartCollectLow();
     enableCycleCounter();
     
     // Ready banner removed
@@ -300,6 +305,10 @@ void loop() {
         currentChannel = (currentChannel + 1) % N_CH;
         if (currentChannel == 0) {
             g_acquisition.swapBuffers();
+            // Phase2 ingestion frame pour médiane Low
+            if (calibrationIsCollecting()) {
+                calibrationFrameIngest(g_acquisition.workingValues); // workingValues encore valides juste après swap
+            }
 #if DEBUG_PROFILE_SCAN
             uint32_t nowUsFrame = micros();
             uint32_t frameDur = nowUsFrame - gFrameStartUs;
@@ -368,6 +377,9 @@ void loop() {
         currentChannel = (currentChannel + 1) % N_CH;
         if (currentChannel == 0) {
             g_acquisition.swapBuffers();
+            if (calibrationIsCollecting()) {
+                calibrationFrameIngest(g_acquisition.workingValues);
+            }
 #if DEBUG_PROFILE_SCAN
             uint32_t nowUsFrame = micros();
             uint32_t frameDur = nowUsFrame - gFrameStartUs;
@@ -428,6 +440,8 @@ void loop() {
 #if DEBUG_ADC_MONITOR
     AdcMonitor::printPeriodic();
 #endif
+    // Service calibration (finalisation médiane)
+    calibrationService();
 }
 
 // (Calibration helper functions removed)

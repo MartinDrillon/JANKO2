@@ -165,5 +165,5 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 // Exposant appliqué à la valeur normalisée (0..1) avant mapping 1..127.
 // <1.0 rend les faibles vitesses plus sensibles (valeurs de vélocité plus élevées plus tôt)
 // >1.0 compresse le bas et étire le haut.
-static constexpr float kVelocityGamma = 0.30f; // Option A proposée
+static constexpr float kVelocityGamma = 0.25f; // Option A proposée
 

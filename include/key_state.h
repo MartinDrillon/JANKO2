@@ -31,6 +31,9 @@ struct KeyData {
     // Last measurement 
     uint16_t last_adc = 0;
     uint32_t last_sample_us = 0;
+
+    // Peak tracking pour adaptation High dynamique
+    uint16_t peak_adc = 0;
     
     // Debug/monitoring
     uint32_t total_triggers = 0;
