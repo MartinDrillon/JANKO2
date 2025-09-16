@@ -215,6 +215,10 @@ void scanChannelDualADC(uint8_t channel) {
     // Process all 8 keys (always active; no calibration phase)
     for (uint8_t mux = 0; mux < 8; mux++) {
         VelocityEngine::processKey(mux, channel, values[mux], timestamp_us);
+#if DEBUG_ADC_MONITOR
+        // Met à jour le moniteur si c'est la combinaison surveillée
+        AdcMonitor::updateIfMatch(mux, channel, values[mux], timestamp_us);
+#endif
     }
 
 #if DEBUG_DUPLICATE_DETECT
