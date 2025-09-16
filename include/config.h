@@ -165,5 +165,21 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 // Exposant appliqué à la valeur normalisée (0..1) avant mapping 1..127.
 // <1.0 rend les faibles vitesses plus sensibles (valeurs de vélocité plus élevées plus tôt)
 // >1.0 compresse le bas et étire le haut.
-static constexpr float kVelocityGamma = 0.25f; // Option A proposée
+static constexpr float kVelocityGamma = 0.20f; // Option A proposée
+
+// === Phase 3: Rearm / Hysteresis (déclenchements rapides fiables) ===
+// Quand une note passe de HELD à REARMED (après NoteOff), on veut:
+//  1. Empêcher un retrigger tant que le signal n'est pas redescendu suffisamment sous Low.
+//  2. Autoriser un retrigger ensuite seulement après un nombre d'échantillons stables remontant au-dessus de Low.
+// Marges exprimées en counts ADC (10 bits => 1 count = 1 LSB)
+// Descente profonde requise pour repasser en IDLE (avant potentielle nouvelle frappe)
+static constexpr uint16_t kRearmDeepMarginCounts = 12;   // ex: Low - 12 => repasse IDLE
+// Marge intermédiaire pour considérer que la touche est revenue en zone « relâchée » (reste en REARMED)
+static constexpr uint16_t kRearmShallowMarginCounts = 4; // ex: Low - 4 => zone tampon
+// Nombre d'échantillons consécutifs sous (Low - kRearmDeepMarginCounts) pour valider retour profond
+static constexpr uint8_t kStableSamplesForDeepRelease = 3;
+// Nombre d'échantillons consécutifs >= Low pour autoriser relance (TRACKING) depuis REARMED
+static constexpr uint8_t kStableSamplesForRetrigger = 2; // 2 ou 3 selon bruit
+// Sécurité (anti-bounce) : si on oscille, on exige d'abord un cycle profond avant un nouveau trigger
+static constexpr bool kRequireDeepBeforeRetrigger = true;
 
