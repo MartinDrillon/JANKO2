@@ -2,6 +2,7 @@
 #include "velocity_calc.h"
 #include "config.h"
 #include "calibration.h"
+#include "midi_out.h"
 
 // === Global State Arrays Definition ===
 KeyData g_keys[N_MUX][N_CH];
@@ -102,17 +103,21 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
 // Removed advanced handlers & velocity math (simplified inline in processKey switch)
 
 void VelocityEngine::sendNoteOn(uint8_t note, uint8_t velocity, uint8_t mux, uint8_t channel) {
-    usbMIDI.sendNoteOn(note, velocity, 1); // Channel 1
-    
-    // Debug output uniquement pour canal 6
-    // Debug removed
+    MidiOut::Event ev{MidiOut::Kind::NoteOn, kMidiChannel, note, velocity};
+    if (!MidiOut::enqueue(ev)) {
+        // Fallback to immediate send to avoid missed notes if queue is saturated
+        usbMIDI.sendNoteOn(note, velocity, kMidiChannel);
+        usbMIDI.send_now();
+    }
 }
 
 void VelocityEngine::sendNoteOff(uint8_t note, uint8_t mux, uint8_t channel) {
-    usbMIDI.sendNoteOff(note, 0, 1); // Channel 1
-    
-    // Debug output uniquement pour canal 6
-    // Debug removed
+    MidiOut::Event ev{MidiOut::Kind::NoteOff, kMidiChannel, note, 0};
+    if (!MidiOut::enqueue(ev)) {
+        // Fallback to immediate send to avoid stuck notes
+        usbMIDI.sendNoteOff(note, 0, kMidiChannel);
+        usbMIDI.send_now();
+    }
 }
 
 void VelocityEngine::resetKey(KeyData& key) {

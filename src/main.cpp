@@ -11,6 +11,7 @@
 #include "io_state.h"
 #include "key_state.h"
 #include "calibration.h"
+#include "midi_out.h"
 #include <imxrt.h>  // pour DWT cycle counter (Teensy 4.x)
 #if DEBUG_ADC_MONITOR
 #include "adc_monitor.h"
@@ -272,6 +273,8 @@ void setup() {
     
     // Initialize velocity engine
     VelocityEngine::initialize();
+    // Initialize MIDI output queue
+    MidiOut::init();
     // Init static thresholds (Phase1 dynamique)
     calibrationInitStatic();
     // Phase2: démarrer collecte médiane Low
@@ -351,6 +354,8 @@ void loop() {
 #endif
     // Flush LED strip une seule fois par frame (si changement)
     simpleLedsFrameFlush();
+    // MIDI: drain queue avec budget court, une seule fois par frame
+    MidiOut::service(50);
 #if DEBUG_DUPLICATE_DETECT
     gFramesSinceDupPrint++;
     if (gFramesSinceDupPrint >= DEBUG_DUPLICATE_PRINT_INTERVAL_FRAMES) {
@@ -419,6 +424,8 @@ void loop() {
 #endif
     // Flush LED strip une seule fois par frame (si changement)
     simpleLedsFrameFlush();
+    // MIDI: drain queue avec budget court, une seule fois par frame
+    MidiOut::service(50);
 #if DEBUG_DUPLICATE_DETECT
     gFramesSinceDupPrint++;
     if (gFramesSinceDupPrint >= DEBUG_DUPLICATE_PRINT_INTERVAL_FRAMES) {
