@@ -167,3 +167,16 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 // >1.0 compresse le bas et étire le haut.
 static constexpr float kVelocityGamma = 0.20f; // Option A proposée
 
+// === Calibration/Release tuning ===
+// Window for median Low collection during calibration (ms)
+static constexpr uint32_t kCalibMedianWindowMs = 1000; // 1s as requested
+// Release margin as a fraction of swing |High-Low| (Option B = 10%)
+static constexpr float kReleaseMarginPct = 0.10f;
+// Minimum absolute counts kept away from High for Release
+static constexpr uint16_t kReleaseMinCounts = 10;
+// Minimum ADC delta to consider a press motion starting (for sign detection)
+static constexpr uint16_t kPressStartDelta = 8;
+// Post-calibration threshold nudging as a fraction of gap |High-Low|
+// High is moved toward Low by this fraction, Low is moved away from High by this fraction (polarity-aware)
+static constexpr float kThresholdNudgePct = 0.10f;
+

@@ -12,6 +12,7 @@
 #include "key_state.h"
 #include "calibration.h"
 #include "midi_out.h"
+#include "calibration_controller.h"
 #include <imxrt.h>  // pour DWT cycle counter (Teensy 4.x)
 #if DEBUG_ADC_MONITOR
 #include "adc_monitor.h"
@@ -280,6 +281,8 @@ void setup() {
     // Phase2: démarrer collecte médiane Low
     calibrationStartCollectLow();
     enableCycleCounter();
+    // Calibration controller: try EEPROM load and set idle
+    CalibrationCtl::init();
     
     // Ready banner removed
     
@@ -311,6 +314,7 @@ void loop() {
         currentChannel = (currentChannel + 1) % N_CH;
         if (currentChannel == 0) {
             g_acquisition.swapBuffers();
+            CalibrationCtl::onFrameSwap();
             // Phase2 ingestion frame pour médiane Low
             if (calibrationIsCollecting()) {
                 calibrationFrameIngest(g_acquisition.workingValues); // workingValues encore valides juste après swap
@@ -385,6 +389,7 @@ void loop() {
         currentChannel = (currentChannel + 1) % N_CH;
         if (currentChannel == 0) {
             g_acquisition.swapBuffers();
+            CalibrationCtl::onFrameSwap();
             if (calibrationIsCollecting()) {
                 calibrationFrameIngest(g_acquisition.workingValues);
             }
@@ -461,6 +466,7 @@ void loop() {
 #endif
     // Service calibration (finalisation médiane)
     calibrationService();
+    CalibrationCtl::service(millis());
 }
 
 // (Calibration helper functions removed)

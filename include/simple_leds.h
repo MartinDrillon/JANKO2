@@ -21,3 +21,7 @@ void simpleLedsSetRocker(bool pin4High, bool pin5High);
 
 // Optional: feed button24 state (LOW = pressed) to light LED 1 white
 void simpleLedsSetButton24(bool isLowPressed);
+
+// Calibration override modes for the strip (override all other indicators)
+enum class LedOverride : uint8_t { None = 0, CalibBlinkRed, CalibBlueSolid };
+void simpleLedsSetOverride(LedOverride mode);

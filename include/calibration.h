@@ -17,7 +17,7 @@ namespace Calib {
 	constexpr uint8_t  kHighFastNotes    = 3;     // nb notes « fast »
 	constexpr uint16_t kReleaseDelta     = 50;    // Release = High - delta
 		// Phase2
-		constexpr uint32_t kMedianWindowMs   = 2000;  // collecte médiane Low
+	constexpr uint32_t kMedianWindowMs   = 2000;  // deprecated; use kCalibMedianWindowMs
 }
 
 // Tables runtime (initialisées dans calibration.cpp)
@@ -43,9 +43,25 @@ inline uint16_t calibLow(uint8_t m, uint8_t c) {
 inline uint16_t calibHigh(uint8_t m, uint8_t c) {
 	return gThHigh[m][c];
 }
+// Polarity: +1 if High>=Low else -1
+inline int8_t calibSign(uint8_t m, uint8_t c) {
+	return (gThHigh[m][c] >= gThLow[m][c]) ? 1 : -1;
+}
+// Directional release near High: Release = Low + sign * max(H' - pct*H', kReleaseMinCounts)
 inline uint16_t calibRelease(uint8_t m, uint8_t c) {
-	uint16_t h = gThHigh[m][c];
-	return (h > Calib::kReleaseDelta) ? (uint16_t)(h - Calib::kReleaseDelta) : 0;
+	uint16_t low = gThLow[m][c];
+	uint16_t high = gThHigh[m][c];
+	int8_t sign = calibSign(m, c);
+	uint16_t swing = (high > low) ? (high - low) : (low - high);
+	uint16_t margin = (uint16_t)max<uint32_t>((uint32_t)(kReleaseMarginPct * swing), (uint32_t)kReleaseMinCounts);
+	uint16_t relAmp = (swing > margin) ? (swing - margin) : 0;
+	int v = (int)low + (int)sign * (int)relAmp;
+	if (v < 0) {
+		v = 0;
+	} else if (v > 1023) {
+		v = 1023;
+	}
+	return (uint16_t)v;
 }
 
 // Compat (si ancien code appelle encore ces noms globaux)

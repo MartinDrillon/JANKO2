@@ -63,7 +63,7 @@ void calibrationFrameIngest(const uint16_t frameValues[N_MUX][N_CH]) {
 	}
 	// Vérifier fenêtre temps
 	uint32_t nowMs = millis();
-	if (nowMs - gCollectStartMs >= Calib::kMedianWindowMs) {
+	if (nowMs - gCollectStartMs >= kCalibMedianWindowMs) {
 		gState = CalibState::FINALIZE_LOW;
 	}
 }
@@ -83,9 +83,21 @@ static void finalizeMedian() {
 			}
 			uint16_t low = (uint16_t)std::min<int>(median + Calib::kLowMarginCounts, 1023);
 			gThLow[m][c] = low;
-			// Ajuster High si inférieur aux contraintes
-			if (gThHigh[m][c] < (uint16_t)(low + Calib::kMinSwingCounts)) {
-				gThHigh[m][c] = (uint16_t)std::min<int>(low + Calib::kMinSwingCounts, 1023);
+			// Ensure minimum swing magnitude but preserve polarity if already inverted
+			int16_t diff = (int16_t)gThHigh[m][c] - (int16_t)low; // positive: normal, negative: inverted
+			if (diff >= 0) {
+				if (diff < (int16_t)Calib::kMinSwingCounts) {
+					int newH = (int)low + (int)Calib::kMinSwingCounts;
+					if (newH > 1023) newH = 1023;
+					gThHigh[m][c] = (uint16_t)newH;
+				}
+			} else {
+				// Inverted polarity: keep High below Low by at least MinSwing
+				if ((-diff) < (int16_t)Calib::kMinSwingCounts) {
+					int newH = (int)low - (int)Calib::kMinSwingCounts;
+					if (newH < 0) newH = 0;
+					gThHigh[m][c] = (uint16_t)newH;
+				}
 			}
 		}
 	}
@@ -106,16 +118,35 @@ bool calibrationIsRunning() { return gState == CalibState::RUN; }
 void updateHighAfterNote(uint8_t mux, uint8_t ch, uint16_t peak) {
 	if (mux >= N_MUX || ch >= N_CH) return;
 	uint16_t low = gThLow[mux][ch];
-	if (peak < (uint16_t)(low + Calib::kMinSwingCounts)) return; // frôlement
-	int target = (int)peak - (int)Calib::kHighTargetMargin;
-	if (target < (int)(low + Calib::kMinSwingCounts)) target = low + Calib::kMinSwingCounts;
-	if (target > 1023) target = 1023;
-	uint16_t oldH = gThHigh[mux][ch];
-	float alpha = (gHighFastSeen[mux][ch] < Calib::kHighFastNotes) ? Calib::kHighAlphaFast : Calib::kHighAlpha;
-	float blended = alpha * oldH + (1.0f - alpha) * (float)target;
-	int newH = (int)blended;
-	if (newH < (int)(low + Calib::kMinSwingCounts)) newH = low + Calib::kMinSwingCounts;
-	if (newH > 1023) newH = 1023;
-	gThHigh[mux][ch] = (uint16_t)newH;
-	if (gHighFastSeen[mux][ch] < 255) gHighFastSeen[mux][ch]++;
+	int16_t diff = (int16_t)peak - (int16_t)low;
+	// Ignore tiny motions
+	if (diff > 0) {
+		// Normal polarity press
+		if (diff < (int16_t)Calib::kMinSwingCounts) return;
+		int target = (int)peak - (int)Calib::kHighTargetMargin;
+		if (target < (int)(low + Calib::kMinSwingCounts)) target = low + Calib::kMinSwingCounts;
+		if (target > 1023) target = 1023;
+		uint16_t oldH = gThHigh[mux][ch];
+		float alpha = (gHighFastSeen[mux][ch] < Calib::kHighFastNotes) ? Calib::kHighAlphaFast : Calib::kHighAlpha;
+		float blended = alpha * oldH + (1.0f - alpha) * (float)target;
+		int newH = (int)blended;
+		if (newH < (int)(low + Calib::kMinSwingCounts)) newH = low + Calib::kMinSwingCounts;
+		if (newH > 1023) newH = 1023;
+		gThHigh[mux][ch] = (uint16_t)newH;
+		if (gHighFastSeen[mux][ch] < 255) gHighFastSeen[mux][ch]++;
+	} else if (diff < 0) {
+		// Inverted polarity press (falling values)
+		if ((-diff) < (int16_t)Calib::kMinSwingCounts) return;
+		int target = (int)peak + (int)Calib::kHighTargetMargin; // move High toward peak from below
+		if (target > (int)(low - Calib::kMinSwingCounts)) target = (int)low - (int)Calib::kMinSwingCounts;
+		if (target < 0) target = 0;
+		uint16_t oldH = gThHigh[mux][ch];
+		float alpha = (gHighFastSeen[mux][ch] < Calib::kHighFastNotes) ? Calib::kHighAlphaFast : Calib::kHighAlpha;
+		float blended = alpha * oldH + (1.0f - alpha) * (float)target;
+		int newH = (int)blended;
+		if (newH > (int)(low - Calib::kMinSwingCounts)) newH = (int)low - (int)Calib::kMinSwingCounts;
+		if (newH < 0) newH = 0;
+		gThHigh[mux][ch] = (uint16_t)newH;
+		if (gHighFastSeen[mux][ch] < 255) gHighFastSeen[mux][ch]++;
+	}
 }

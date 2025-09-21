@@ -43,27 +43,42 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
     uint16_t thLow  = calibLow(mux, channel);
     uint16_t thHigh = calibHigh(mux, channel);
     uint16_t thRel  = calibRelease(mux, channel);
+    int8_t cfgSign = calibSign(mux, channel);
+    int8_t sign = (key.press_sign != 0) ? key.press_sign : cfgSign;
 
     switch (key.state) {
-        case KeyState::IDLE:
-            if (adc_value >= thLow) {
+        case KeyState::IDLE: {
+            // Detect motion direction to set press_sign if large enough
+            int16_t dv = (int16_t)adc_value - (int16_t)key.last_adc;
+            if (dv >= (int16_t)kPressStartDelta) key.press_sign = +1;
+            else if (dv <= -(int16_t)kPressStartDelta) key.press_sign = -1;
+
+            int8_t s = (key.press_sign != 0) ? key.press_sign : cfgSign;
+            if ((s >= 0 && adc_value >= thLow) || (s < 0 && adc_value <= thLow)) {
                 key.state = KeyState::TRACKING;
                 key.adc_start = adc_value;
                 key.t_start_us = timestamp_us;
                 key.current_velocity = 0;
                 key.peak_adc = adc_value; // nouveau champ (sera ajouté dans struct)
             }
-            break;
+            break; }
         case KeyState::TRACKING: {
-            if (adc_value < thLow) {
+            if ((sign >= 0 && adc_value < thLow) || (sign < 0 && adc_value > thLow)) {
                 resetKey(key);
                 break;
             }
-            if (adc_value > key.peak_adc) key.peak_adc = adc_value;
-            if (adc_value >= thHigh) {
+            // Peak tracking respects polarity
+            if (sign >= 0) {
+                if (adc_value > key.peak_adc) key.peak_adc = adc_value;
+            } else {
+                if (key.peak_adc == 0 || adc_value < key.peak_adc) key.peak_adc = adc_value;
+            }
+            if ((sign >= 0 && adc_value >= thHigh) || (sign < 0 && adc_value <= thHigh)) {
                 int8_t note = effectiveNote(mux, channel);
                 if (note == DISABLED) { resetKey(key); break; }
-                uint16_t delta_adc = (adc_value > key.adc_start) ? (adc_value - key.adc_start) : 1;
+                // Use absolute delta so inverted keys produce non-zero velocity
+                uint16_t delta_adc = (adc_value > key.adc_start) ? (adc_value - key.adc_start) : (key.adc_start - adc_value);
+                if (delta_adc == 0) delta_adc = 1;
                 uint32_t dt = (timestamp_us > key.t_start_us) ? (timestamp_us - key.t_start_us) : 1;
                 uint8_t velocity = computeVelocity(delta_adc, dt);
                 sendNoteOn((uint8_t)note, velocity, mux, channel);
@@ -75,8 +90,12 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
             }
             break; }
         case KeyState::HELD:
-            if (adc_value > key.peak_adc) key.peak_adc = adc_value;
-            if (adc_value < thRel) {
+            if (sign >= 0) {
+                if (adc_value > key.peak_adc) key.peak_adc = adc_value;
+            } else {
+                if (adc_value < key.peak_adc) key.peak_adc = adc_value;
+            }
+            if ((sign >= 0 && adc_value < thRel) || (sign < 0 && adc_value > thRel)) {
                 sendNoteOff(key.current_note, mux, channel);
                 key.note_on_sent = false;
                 // mise à jour adaptative du High
@@ -85,13 +104,15 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
             }
             break;
         case KeyState::REARMED:
-            if (adc_value < (thLow - 10)) {
+            // Fully released: be safely back on the released side of Low
+            if ((sign >= 0 && adc_value < (thLow - 10)) || (sign < 0 && adc_value > (thLow + 10))) {
                 key.state = KeyState::IDLE; // fully released deep
-            } else if (adc_value >= thLow) {
+            } else if ((sign >= 0 && adc_value >= thLow) || (sign < 0 && adc_value <= thLow)) {
                 key.state = KeyState::TRACKING;
                 key.adc_start = adc_value;
                 key.t_start_us = timestamp_us;
                 key.peak_adc = adc_value;
+                // Keep press_sign for rapid retrigger; will be updated by motion next IDLE
             }
             break;
     }
@@ -124,6 +145,7 @@ void VelocityEngine::resetKey(KeyData& key) {
     key.state = KeyState::IDLE;
     key.adc_start = 0;
     key.t_start_us = 0;
+    key.press_sign = 0;
     key.note_on_sent = false;
     key.current_note = 0;
     key.current_velocity = 0;

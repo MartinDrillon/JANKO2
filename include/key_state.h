@@ -18,6 +18,8 @@ struct KeyData {
     // Velocity tracking
     uint16_t adc_start = 0;
     uint32_t t_start_us = 0;
+    // Press direction for this gesture: +1 rising, -1 falling, 0 unknown
+    int8_t press_sign = 0;
     
     // MIDI state
     bool note_on_sent = false;

@@ -19,6 +19,9 @@ static bool g_button24Low_last = false;
 static uint8_t g_cachedRockerState = 0; // 0=off, 1=pin5, 2=both, 3=pin4
 static uint8_t g_lastRockerState = 0;
 static bool g_needFlush = false;        // un flush est nécessaire
+static LedOverride g_override = LedOverride::None;
+static uint32_t g_lastBlinkToggleMs = 0;
+static bool g_blinkOn = false;
 
 // LED simple sur pin 12 sera traitée en sortie numérique + couleur fixe verte par R/G/B discret (utiliser RGB discret ou NeoPixel ?)
 // Supposons LED unique standard: ON = vert -> si LED RGB séparée faudrait lib; ici on simplifie: on allume HIGH.
@@ -39,6 +42,9 @@ void simpleLedsInit() {
     g_button24Low_cached = false;
     g_button24Low_last = false;
     g_needFlush = false;
+    g_override = LedOverride::None;
+    g_lastBlinkToggleMs = millis();
+    g_blinkOn = false;
 }
 
 void simpleLedsTask() {
@@ -87,6 +93,22 @@ void simpleLedsSetRocker(bool pin4High, bool pin5High) {
 }
 
 void simpleLedsFrameFlush() {
+    // Handle calibration override first
+    if (g_override != LedOverride::None) {
+        if (g_override == LedOverride::CalibBlinkRed) {
+            // 100ms ON / 100ms OFF
+            uint32_t now = millis();
+            if (now - g_lastBlinkToggleMs >= 100) { g_blinkOn = !g_blinkOn; g_lastBlinkToggleMs = now; }
+            uint32_t col = g_blinkOn ? strip.Color(120, 0, 0) : 0;
+            for (uint16_t i=0;i<strip.numPixels();++i) strip.setPixelColor(i, col);
+        } else if (g_override == LedOverride::CalibBlueSolid) {
+            uint32_t col = strip.Color(0, 0, 120);
+            for (uint16_t i=0;i<strip.numPixels();++i) strip.setPixelColor(i, col);
+        }
+        strip.show();
+        return;
+    }
+
     if (!g_needFlush && g_cachedColor == g_lastPushedColor && g_cachedRockerState == g_lastRockerState && g_button24Low_cached == g_button24Low_last) {
         return; // rien à faire
     }
@@ -124,6 +146,14 @@ void simpleLedsFrameFlush() {
 void simpleLedsSetButton24(bool isLowPressed) {
     if (g_button24Low_cached != isLowPressed) {
         g_button24Low_cached = isLowPressed;
+        g_needFlush = true;
+    }
+}
+
+void simpleLedsSetOverride(LedOverride mode) {
+    if (g_override != mode) {
+        g_override = mode;
+        // Force immediate update on next flush
         g_needFlush = true;
     }
 }
