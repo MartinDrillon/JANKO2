@@ -152,7 +152,7 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 #define DEBUG_ADC_MONITOR 1
 #endif
 #ifndef DEBUG_ADC_MONITOR_MUX
-#define DEBUG_ADC_MONITOR_MUX 1
+#define DEBUG_ADC_MONITOR_MUX 3
 #endif
 #ifndef DEBUG_ADC_MONITOR_CHANNEL
 #define DEBUG_ADC_MONITOR_CHANNEL 0
