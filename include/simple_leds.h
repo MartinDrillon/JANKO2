@@ -18,3 +18,6 @@ void setCalibrationLeds(bool enabled);  // Turn red LEDs 3,4,5 on/off
 
 // Optional: feed rocker status (so this module doesn't read pins)
 void simpleLedsSetRocker(bool pin4High, bool pin5High);
+
+// Optional: feed button24 state (LOW = pressed) to light LED 1 white
+void simpleLedsSetButton24(bool isLowPressed);

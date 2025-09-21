@@ -2,7 +2,7 @@
 
 namespace IoState {
     static bool sInited = false;
-    static RockerStatus sLast{true, true, 0};
+    static RockerStatus sLast{true, true, 0, false};
     static uint32_t sLastPollMs = 0;
     static constexpr uint32_t kPollPeriodMs = 10; // ~100 Hz
 
@@ -19,9 +19,12 @@ namespace IoState {
         pinMode(kPinRocker5, INPUT_PULLUP);
         bool p4 = digitalReadFast(kPinRocker4);
         bool p5 = digitalReadFast(kPinRocker5);
+        pinMode(kPinButton24, INPUT_PULLUP);
+        bool b24low = (digitalReadFast(kPinButton24) == LOW);
         sLast.pin4High = p4;
         sLast.pin5High = p5;
         sLast.transpose = calcTranspose(p4, p5);
+        sLast.button24Low = b24low;
         sLastPollMs = millis();
         sInited = true;
     }
@@ -35,12 +38,14 @@ namespace IoState {
         sLastPollMs = nowMs;
         bool p4 = digitalReadFast(kPinRocker4);
         bool p5 = digitalReadFast(kPinRocker5);
+        bool b24low = (digitalReadFast(kPinButton24) == LOW);
         int8_t tr = calcTranspose(p4, p5);
-        bool changed = (p4 != sLast.pin4High) || (p5 != sLast.pin5High) || (tr != sLast.transpose);
+        bool changed = (p4 != sLast.pin4High) || (p5 != sLast.pin5High) || (tr != sLast.transpose) || (b24low != sLast.button24Low);
         if (changed) {
             sLast.pin4High = p4;
             sLast.pin5High = p5;
             sLast.transpose = tr;
+            sLast.button24Low = b24low;
         }
         outStatus = sLast;
         return changed;

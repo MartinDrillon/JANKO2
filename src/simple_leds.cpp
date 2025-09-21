@@ -13,6 +13,8 @@ static Adafruit_NeoPixel single(1, PIN_SINGLE, NEO_GRB + NEO_KHZ800);
 // Cache de l'état désiré pour la LED d'index 1 sur le strip.
 static uint32_t g_cachedColor = 0;      // couleur souhaitée actuelle (LED index 1)
 static uint32_t g_lastPushedColor = 0;  // dernière couleur réellement envoyée (LED index 1)
+static bool g_button24Low_cached = false; // LED index 0 white when true
+static bool g_button24Low_last = false;
 // Rocker cached state: 0=off, 1=LEFT(LED idx 2), 2=CENTER(LED idx 3), 3=RIGHT(LED idx 4)
 static uint8_t g_cachedRockerState = 0; // 0=off, 1=pin5, 2=both, 3=pin4
 static uint8_t g_lastRockerState = 0;
@@ -34,6 +36,8 @@ void simpleLedsInit() {
     g_lastPushedColor = 0;
     g_cachedRockerState = 0;
     g_lastRockerState = 0;
+    g_button24Low_cached = false;
+    g_button24Low_last = false;
     g_needFlush = false;
 }
 
@@ -83,9 +87,11 @@ void simpleLedsSetRocker(bool pin4High, bool pin5High) {
 }
 
 void simpleLedsFrameFlush() {
-    if (!g_needFlush && g_cachedColor == g_lastPushedColor && g_cachedRockerState == g_lastRockerState) {
+    if (!g_needFlush && g_cachedColor == g_lastPushedColor && g_cachedRockerState == g_lastRockerState && g_button24Low_cached == g_button24Low_last) {
         return; // rien à faire
     }
+    // Update button-24 LED 1 (index 0): white when LOW
+    strip.setPixelColor(0, g_button24Low_cached ? strip.Color(80,80,80) : 0);
     // Update pin-3 status LED (index 1)
     strip.setPixelColor(1, g_cachedColor);
 
@@ -111,5 +117,13 @@ void simpleLedsFrameFlush() {
     strip.show();
     g_lastPushedColor = g_cachedColor;
     g_lastRockerState = g_cachedRockerState;
+    g_button24Low_last = g_button24Low_cached;
     g_needFlush = false;
+}
+
+void simpleLedsSetButton24(bool isLowPressed) {
+    if (g_button24Low_cached != isLowPressed) {
+        g_button24Low_cached = isLowPressed;
+        g_needFlush = true;
+    }
 }

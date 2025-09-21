@@ -446,6 +446,7 @@ void loop() {
         // Apply transpose and feed LEDs without extra pin reads here
         noteMapSetTranspose(rs.transpose);
         simpleLedsSetRocker(rs.pin4High, rs.pin5High);
+        simpleLedsSetButton24(rs.button24Low);
     }
 
 #if DEBUG_ADC_MONITOR
