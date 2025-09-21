@@ -113,7 +113,7 @@ static constexpr uint32_t kFrameTargetHz = 3125;     // 3.125kHz cible (maj selo
 static constexpr uint16_t kDuplicateTolerance = 1;
 // === Profiling (mesures internes) ===
 #ifndef DEBUG_PROFILE_SCAN
-#define DEBUG_PROFILE_SCAN 1   // 1=active mesures temps channel/frame
+#define DEBUG_PROFILE_SCAN 0   // 1=active mesures temps channel/frame
 #endif
 #ifndef DEBUG_PROFILE_INTERVAL_FRAMES
 #define DEBUG_PROFILE_INTERVAL_FRAMES 200  // Regroupe sur 200 frames avant impression
@@ -149,13 +149,13 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 //   DEBUG_ADC_MONITOR_CHANNEL: index channel (0..15)
 //   DEBUG_ADC_MONITOR_INTERVAL_MS : période d'impression
 #ifndef DEBUG_ADC_MONITOR
-#define DEBUG_ADC_MONITOR 0
+#define DEBUG_ADC_MONITOR 1
 #endif
 #ifndef DEBUG_ADC_MONITOR_MUX
-#define DEBUG_ADC_MONITOR_MUX 5
+#define DEBUG_ADC_MONITOR_MUX 1
 #endif
 #ifndef DEBUG_ADC_MONITOR_CHANNEL
-#define DEBUG_ADC_MONITOR_CHANNEL 8
+#define DEBUG_ADC_MONITOR_CHANNEL 0
 #endif
 #ifndef DEBUG_ADC_MONITOR_INTERVAL_MS
 #define DEBUG_ADC_MONITOR_INTERVAL_MS 1
@@ -166,20 +166,4 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 // <1.0 rend les faibles vitesses plus sensibles (valeurs de vélocité plus élevées plus tôt)
 // >1.0 compresse le bas et étire le haut.
 static constexpr float kVelocityGamma = 0.20f; // Option A proposée
-
-// === Phase 3: Rearm / Hysteresis (déclenchements rapides fiables) ===
-// Quand une note passe de HELD à REARMED (après NoteOff), on veut:
-//  1. Empêcher un retrigger tant que le signal n'est pas redescendu suffisamment sous Low.
-//  2. Autoriser un retrigger ensuite seulement après un nombre d'échantillons stables remontant au-dessus de Low.
-// Marges exprimées en counts ADC (10 bits => 1 count = 1 LSB)
-// Descente profonde requise pour repasser en IDLE (avant potentielle nouvelle frappe)
-static constexpr uint16_t kRearmDeepMarginCounts = 12;   // ex: Low - 12 => repasse IDLE
-// Marge intermédiaire pour considérer que la touche est revenue en zone « relâchée » (reste en REARMED)
-static constexpr uint16_t kRearmShallowMarginCounts = 4; // ex: Low - 4 => zone tampon
-// Nombre d'échantillons consécutifs sous (Low - kRearmDeepMarginCounts) pour valider retour profond
-static constexpr uint8_t kStableSamplesForDeepRelease = 3;
-// Nombre d'échantillons consécutifs >= Low pour autoriser relance (TRACKING) depuis REARMED
-static constexpr uint8_t kStableSamplesForRetrigger = 2; // 2 ou 3 selon bruit
-// Sécurité (anti-bounce) : si on oscille, on exige d'abord un cycle profond avant un nouveau trigger
-static constexpr bool kRequireDeepBeforeRetrigger = true;
 
