@@ -437,6 +437,9 @@ void loop() {
     // USB MIDI is handled automatically
     // (LEDs déjà flush en fin de frame si nécessaire)
 
+    // Update transpose from rocker pins (slow polling, non-blocking)
+    noteMapUpdateTransposeFromPins();
+
 #if DEBUG_ADC_MONITOR
     AdcMonitor::printPeriodic();
 #endif

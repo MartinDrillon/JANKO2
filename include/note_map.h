@@ -40,6 +40,10 @@ inline uint8_t getNoteOctave(uint8_t midiNote) {
 // Debug function to print current note mapping
 void printNoteMap();
 
+// Update global transpose from hardware rocker pins (4: -12, 5: +12).
+// Non-blocking: internally rate-limited (e.g., ~100 Hz) to avoid impacting ADC scan speed.
+void noteMapUpdateTransposeFromPins();
+
 // === 8-MUX Note Layout for Testing ===
 // Group A (ADC1):
 // MUX0: notes 48-63   (C3 to D#4)

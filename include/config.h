@@ -148,7 +148,7 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 //   DEBUG_ADC_MONITOR_MUX    : index MUX (0..7)
 //   DEBUG_ADC_MONITOR_CHANNEL: index channel (0..15)
 //   DEBUG_ADC_MONITOR_INTERVAL_MS : période d'impression
-#ifndef DEBUG_ADC_MONITOR
+#ifndef DEBUG_A
 #define DEBUG_ADC_MONITOR 1
 #endif
 #ifndef DEBUG_ADC_MONITOR_MUX
