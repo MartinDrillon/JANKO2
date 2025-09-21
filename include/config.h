@@ -113,7 +113,7 @@ static constexpr uint32_t kFrameTargetHz = 3125;     // 3.125kHz cible (maj selo
 static constexpr uint16_t kDuplicateTolerance = 1;
 // === Profiling (mesures internes) ===
 #ifndef DEBUG_PROFILE_SCAN
-#define DEBUG_PROFILE_SCAN 0   // 1=active mesures temps channel/frame
+#define DEBUG_PROFILE_SCAN 1   // 1=active mesures temps channel/frame
 #endif
 #ifndef DEBUG_PROFILE_INTERVAL_FRAMES
 #define DEBUG_PROFILE_INTERVAL_FRAMES 200  // Regroupe sur 200 frames avant impression
@@ -149,7 +149,7 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 //   DEBUG_ADC_MONITOR_CHANNEL: index channel (0..15)
 //   DEBUG_ADC_MONITOR_INTERVAL_MS : période d'impression
 #ifndef DEBUG_A
-#define DEBUG_ADC_MONITOR 1
+#define DEBUG_ADC_MONITOR 0
 #endif
 #ifndef DEBUG_ADC_MONITOR_MUX
 #define DEBUG_ADC_MONITOR_MUX 3

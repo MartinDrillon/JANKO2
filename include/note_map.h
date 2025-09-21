@@ -10,9 +10,11 @@ constexpr int8_t DISABLED = -1;
 // Note mapping table [mux][channel] -> MIDI note (0-127) or DISABLED
 extern const int8_t kNoteMap[8][16];
 
-// Global transpose value (for future pin-controlled transpose)
-// Currently not applied automatically - will be activated by hardware pin
+// Global transpose value (semitones) applied by effectiveNote
 extern int8_t gTranspose;
+
+// Setter to update global transpose (from IoState)
+void noteMapSetTranspose(int8_t semitones);
 
 // Get effective MIDI note for given MUX and channel
 // Returns DISABLED if key is disabled or note out of range
@@ -40,9 +42,7 @@ inline uint8_t getNoteOctave(uint8_t midiNote) {
 // Debug function to print current note mapping
 void printNoteMap();
 
-// Update global transpose from hardware rocker pins (4: -12, 5: +12).
-// Non-blocking: internally rate-limited (e.g., ~100 Hz) to avoid impacting ADC scan speed.
-void noteMapUpdateTransposeFromPins();
+// Note: hardware pin polling is centralized in IoState (io_state.*)
 
 // === 8-MUX Note Layout for Testing ===
 // Group A (ADC1):

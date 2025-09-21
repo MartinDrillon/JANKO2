@@ -8,6 +8,7 @@
 #include "velocity_engine.h"
 #include "calibration.h"
 #include "note_map.h"
+#include "io_state.h"
 #include "key_state.h"
 #include "calibration.h"
 #include <imxrt.h>  // pour DWT cycle counter (Teensy 4.x)
@@ -254,6 +255,8 @@ void setup() {
     
     // Initialize LEDs
     simpleLedsInit();
+    // Initialize I/O state (rocker pins)
+    IoState::init();
     
     // Calibration LEDs no longer used (ensure off)
     setCalibrationLeds(false);
@@ -437,8 +440,13 @@ void loop() {
     // USB MIDI is handled automatically
     // (LEDs déjà flush en fin de frame si nécessaire)
 
-    // Update transpose from rocker pins (slow polling, non-blocking)
-    noteMapUpdateTransposeFromPins();
+    // Centralized I/O service (non-blocking, slow polling)
+    IoState::RockerStatus rs;
+    if (IoState::update(millis(), rs)) {
+        // Apply transpose and feed LEDs without extra pin reads here
+        noteMapSetTranspose(rs.transpose);
+        simpleLedsSetRocker(rs.pin4High, rs.pin5High);
+    }
 
 #if DEBUG_ADC_MONITOR
     AdcMonitor::printPeriodic();

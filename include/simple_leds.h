@@ -15,3 +15,6 @@ void simpleLedsFrameFlush();
 
 // Calibration LED functions
 void setCalibrationLeds(bool enabled);  // Turn red LEDs 3,4,5 on/off
+
+// Optional: feed rocker status (so this module doesn't read pins)
+void simpleLedsSetRocker(bool pin4High, bool pin5High);

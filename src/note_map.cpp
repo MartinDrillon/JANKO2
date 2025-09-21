@@ -3,6 +3,16 @@
 // Global transpose value (default: no transpose)
 int8_t gTranspose = 0;
 
+static inline int8_t clampTranspose(int8_t s) {
+    if (s < -24) return -24;
+    if (s >  24) return  24;
+    return s;
+}
+
+void noteMapSetTranspose(int8_t semitones) {
+    gTranspose = clampTranspose(semitones);
+}
+
 // Note mapping table [mux][channel] -> MIDI note
 // Default: linear mapping (48 + mux*16 + channel) starting from C3
 // Use DISABLED (-1) to disable specific keys
@@ -53,7 +63,7 @@ int8_t effectiveNote(uint8_t mux, uint8_t channel) {
     if (mappedNote == DISABLED) {
         return DISABLED;
     }
-    // Apply current global transpose (updated via noteMapUpdateTransposeFromPins)
+    // Apply current global transpose (updated by IoState via noteMapSetTranspose)
     int16_t transposed = (int16_t)mappedNote + (int16_t)gTranspose;
     if (transposed < 0 || transposed > 127) {
         return DISABLED;
@@ -65,32 +75,4 @@ void printNoteMap() {
     // Mapping print removed (no Serial in performance build)
 }
 
-// --- Transpose control from rocker pins 4 and 5 ---
-void noteMapUpdateTransposeFromPins() {
-    static bool initialized = false;
-    if (!initialized) {
-        pinMode(4, INPUT_PULLUP);
-        pinMode(5, INPUT_PULLUP);
-        initialized = true;
-    }
-    static uint32_t lastPollMs = 0;
-    uint32_t nowMs = millis();
-    if ((uint32_t)(nowMs - lastPollMs) < 10) return; // ~100 Hz
-    lastPollMs = nowMs;
-
-    const int r4 = digitalRead(4);
-    const int r5 = digitalRead(5);
-
-    int8_t newTranspose = 0;
-    if (r4 == HIGH && r5 == HIGH) {
-        newTranspose = 0;        // both HIGH: neutral (center)
-    } else if (r4 == HIGH) {
-        newTranspose = -12;      // pin 4 HIGH: transpose down one octave
-    } else if (r5 == HIGH) {
-        newTranspose = +12;      // pin 5 HIGH: transpose up one octave
-    } else {
-        newTranspose = 0;        // both LOW: neutral
-    }
-
-    gTranspose = newTranspose;
-}
+// Pin polling moved to IoState
