@@ -277,8 +277,7 @@ void setup() {
     MidiOut::init();
     // Init static thresholds (Phase1 dynamique)
     calibrationInitStatic();
-    // Phase2: démarrer collecte médiane Low
-    calibrationStartCollectLow();
+    // Ne pas démarrer de calibration au boot: conserver les seuils EEPROM
     enableCycleCounter();
     
     // Ready banner removed

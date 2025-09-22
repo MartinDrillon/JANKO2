@@ -181,14 +181,14 @@ static constexpr uint8_t  kRepressStableCount = 1; // passer à 2 si besoin de p
 namespace CalibCfg {
     // Low opérationnel: LowOp = Low ± max(Min, Pct * D)
     constexpr float    kLowMarginPct        = 0.10f;  // 10%
-    constexpr uint16_t kLowMarginMinCounts  = 20;     // plancher en counts
+    constexpr uint16_t kLowMarginMinCounts  = 10;     // plancher en counts
 
     // High opérationnel: HighOp = High ∓ max(Min, Pct * D)
     constexpr float    kHighTargetMarginPct = 0.15f;  // 15%
-    constexpr uint16_t kHighTargetMarginMin = 30;
+    constexpr uint16_t kHighTargetMarginMin = 10;
 
     // Release: Release = High ∓ max(Min, Pct * D)
-    constexpr float    kReleaseDeltaPct     = 0.25f;  // 25%
-    constexpr uint16_t kReleaseDeltaMin     = 50;
+    constexpr float    kReleaseDeltaPct     = 0.15f;  // 15%
+    constexpr uint16_t kReleaseDeltaMin     = 10;
 }
 
