@@ -1,4 +1,5 @@
 #include "adc_monitor.h"
+#include "calibration.h"
 #if DEBUG_ADC_MONITOR
 
 namespace AdcMonitor {
@@ -26,6 +27,11 @@ namespace AdcMonitor {
         uint32_t nowMs = millis();
         if (nowMs - g_lastPrintMs >= DEBUG_ADC_MONITOR_INTERVAL_MS) {
             g_lastPrintMs = nowMs;
+            // Read thresholds live
+            uint16_t low  = calibLow(DEBUG_ADC_MONITOR_MUX, DEBUG_ADC_MONITOR_CHANNEL);
+            uint16_t high = calibHigh(DEBUG_ADC_MONITOR_MUX, DEBUG_ADC_MONITOR_CHANNEL);
+            uint16_t rel  = calibRelease(DEBUG_ADC_MONITOR_MUX, DEBUG_ADC_MONITOR_CHANNEL);
+            int8_t   s    = (high >= low) ? 1 : -1;
             Serial.print("ADC[");
             Serial.print(DEBUG_ADC_MONITOR_MUX);
             Serial.print(",");
@@ -34,7 +40,14 @@ namespace AdcMonitor {
             Serial.print(g_lastValue);
             Serial.print(" @");
             Serial.print(g_lastTimestampUs);
-            Serial.println("us");
+            Serial.print("us  Low=");
+            Serial.print(low);
+            Serial.print(" High=");
+            Serial.print(high);
+            Serial.print(" Release=");
+            Serial.print(rel);
+            Serial.print(" Pol=");
+            Serial.println(s > 0 ? "+" : "-");
         }
     }
 }

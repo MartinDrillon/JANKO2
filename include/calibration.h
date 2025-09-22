@@ -11,7 +11,7 @@
 namespace Calib {
 	// Constantes Phase1 (Phase2 en ajoutera d'autres)
 	// kLowMarginCounts remplacé par CalibCfg::kLowMarginPct/Min
-	constexpr uint16_t kMinSwingCounts   = 150;   // High >= Low + min swing
+	constexpr uint16_t kMinSwingCounts   = 30;   // High >= Low + min swing
 	constexpr uint16_t kHighStartDefault = 915;   // High initial si pas encore appris
 	// kHighTargetMargin remplacé par CalibCfg::kHighTargetMarginPct/Min
 	constexpr float    kHighAlpha        = 0.85f; // EMA lente
