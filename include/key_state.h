@@ -34,6 +34,14 @@ struct KeyData {
 
     // Peak tracking pour adaptation High dynamique
     uint16_t peak_adc = 0;
+
+    // Re-press valley tracking (ThresholdMed):
+    // When key transitions HELD → REARMED (released but not fully), we start tracking
+    // the lowest ADC reached before the next press. If the next press occurs before
+    // returning to ThresholdLow, velocity timing will start from this valley so that
+    // dv/dt remains consistent with a full stroke at the same physical speed.
+    uint16_t rearm_min_adc = 0;     // minimum ADC after release before re-press
+    uint32_t rearm_min_t_us = 0;    // timestamp when that minimum was observed
     
     // Debug/monitoring
     uint32_t total_triggers = 0;

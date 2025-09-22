@@ -18,8 +18,8 @@ void VelocityEngine::initialize() {
         }
     }
     
-    // Zero acquisition buffers
-    memset(&g_acquisition, 0, sizeof(g_acquisition));
+    // Zero acquisition buffers (value-initialize to avoid class-memaccess warnings)
+    g_acquisition = AcquisitionData{};
 }
 
 void VelocityEngine::processKey(uint8_t mux, uint8_t channel, 
@@ -33,7 +33,7 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
     g_acquisition.t_sample_us[mux][channel] = timestamp_us;
     
     KeyData& key = g_keys[mux][channel];
-    KeyState oldState = key.state;
+    //KeyState oldState = key.state; // unused in release
     
     // Update last measurement
     key.last_adc = adc_value;
@@ -43,6 +43,9 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
     uint16_t thLow  = calibLow(mux, channel);
     uint16_t thHigh = calibHigh(mux, channel);
     uint16_t thRel  = calibRelease(mux, channel);
+    // Use config-defined hysteresis and stability for re-press rising detection
+    constexpr uint16_t kRepressHystCfg = kRepressHyst;
+    constexpr uint8_t  kRepressStableCountCfg = kRepressStableCount;
 
     switch (key.state) {
         case KeyState::IDLE:
@@ -77,23 +80,51 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
         case KeyState::HELD:
             if (adc_value > key.peak_adc) key.peak_adc = adc_value;
             if (adc_value < thRel) {
+                // Note considered released (hysteresis), transition to REARMED
                 sendNoteOff(key.current_note, mux, channel);
                 key.note_on_sent = false;
-                // mise à jour adaptative du High
+                // Update adaptive High peak per key
                 updateHighAfterNote(mux, channel, key.peak_adc);
                 key.state = KeyState::REARMED;
+                // Initialize re-press valley tracking (ThresholdMed)
+                key.rearm_min_adc = adc_value;
+                key.rearm_min_t_us = timestamp_us;
+                key.stable_up_count = 0;
+                key.stable_down_count = 0;
             }
             break;
-        case KeyState::REARMED:
+        case KeyState::REARMED: {
+            // Track minimum (valley) after release
+            if (adc_value < key.rearm_min_adc) {
+                key.rearm_min_adc = adc_value;
+                key.rearm_min_t_us = timestamp_us;
+                key.stable_up_count = 0; // reset rising stability when still falling
+            }
+
+            // If fully released deeply, go back to IDLE
             if (adc_value < (thLow - 10)) {
-                key.state = KeyState::IDLE; // fully released deep
-            } else if (adc_value >= thLow) {
-                key.state = KeyState::TRACKING;
-                key.adc_start = adc_value;
-                key.t_start_us = timestamp_us;
-                key.peak_adc = adc_value;
+                key.state = KeyState::IDLE;
+                break;
             }
-            break;
+
+            // Detect re-press before returning to ThresholdLow:
+            // Start TRACKING from the recorded valley so dv/dt uses the partial path.
+            if (adc_value > (uint16_t)(key.rearm_min_adc + kRepressHystCfg)) {
+                key.stable_up_count++;
+                if (key.stable_up_count >= kRepressStableCountCfg) {
+                    key.state = KeyState::TRACKING;
+                    key.adc_start = key.rearm_min_adc;        // start from ThresholdMed
+                    key.t_start_us = key.rearm_min_t_us;
+                    key.current_velocity = 0;
+                    key.peak_adc = adc_value;
+                    key.stable_up_count = 0;
+                    key.stable_down_count = 0;
+                }
+            } else {
+                // Not yet rising stably
+                if (key.stable_up_count > 0) key.stable_up_count--;
+            }
+            break; }
     }
     
     // Log state changes for debugging
@@ -127,6 +158,9 @@ void VelocityEngine::resetKey(KeyData& key) {
     key.note_on_sent = false;
     key.current_note = 0;
     key.current_velocity = 0;
+    key.peak_adc = 0;
+    key.rearm_min_adc = 0;
+    key.rearm_min_t_us = 0;
 }
 
 void VelocityEngine::printKeyStats(uint8_t, uint8_t) {}
