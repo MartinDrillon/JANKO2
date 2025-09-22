@@ -167,3 +167,10 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 // >1.0 compresse le bas et étire le haut.
 static constexpr float kVelocityGamma = 0.20f; // Option A proposée
 
+// === Encoder configuration ===
+// Number of valid quadrature transitions per mechanical detent.
+// Typical encoders: 4; some produce 2. If you see 1 delta every two detents, set this to 2.
+static constexpr int kEncTransitionsPerDetent = 2;
+// Brightness increment per detent step (0..255 clamped)
+static constexpr uint8_t kEncBrightnessStep = 4;
+

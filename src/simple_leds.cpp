@@ -19,6 +19,7 @@ static bool g_button24Low_last = false;
 static uint8_t g_cachedRockerState = 0; // 0=off, 1=pin5, 2=both, 3=pin4
 static uint8_t g_lastRockerState = 0;
 static bool g_needFlush = false;        // un flush est nécessaire
+static uint8_t g_brightness = 80;       // default logical brightness (0..255)
 
 // LED simple sur pin 12 sera traitée en sortie numérique + couleur fixe verte par R/G/B discret (utiliser RGB discret ou NeoPixel ?)
 // Supposons LED unique standard: ON = vert -> si LED RGB séparée faudrait lib; ici on simplifie: on allume HIGH.
@@ -39,6 +40,7 @@ void simpleLedsInit() {
     g_button24Low_cached = false;
     g_button24Low_last = false;
     g_needFlush = false;
+    g_brightness = 80;
 }
 
 void simpleLedsTask() {
@@ -90,6 +92,8 @@ void simpleLedsFrameFlush() {
     if (!g_needFlush && g_cachedColor == g_lastPushedColor && g_cachedRockerState == g_lastRockerState && g_button24Low_cached == g_button24Low_last) {
         return; // rien à faire
     }
+    // Apply brightness globally
+    strip.setBrightness(g_brightness);
     // Update button-24 LED 1 (index 0): white when LOW
     strip.setPixelColor(0, g_button24Low_cached ? strip.Color(80,80,80) : 0);
     // Update pin-3 status LED (index 1)
@@ -127,3 +131,12 @@ void simpleLedsSetButton24(bool isLowPressed) {
         g_needFlush = true;
     }
 }
+
+void simpleLedsSetBrightness(uint8_t level) {
+    if (g_brightness != level) {
+        g_brightness = level;
+        g_needFlush = true;
+    }
+}
+
+uint8_t simpleLedsGetBrightness() { return g_brightness; }

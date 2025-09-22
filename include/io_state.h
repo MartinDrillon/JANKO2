@@ -7,12 +7,16 @@ namespace IoState {
     constexpr uint8_t kPinRocker5 = 5;
     // Button pin
     constexpr uint8_t kPinButton24 = 24;
+    // Encoder pins - Quadrature A/B
+    constexpr uint8_t kPinEncA = 26; // channel A
+    constexpr uint8_t kPinEncB = 28; // channel B
 
     struct RockerStatus {
         bool pin4High;
         bool pin5High;
         int8_t transpose; // -12, 0, +12
         bool button24Low; // true when pressed (LOW)
+        int8_t encDelta;  // -n..+n steps since last poll (CCW negative, CW positive)
     };
 
     // Initialize pins (INPUT_PULLUP). Call once in setup.

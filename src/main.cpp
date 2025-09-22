@@ -454,6 +454,18 @@ void loop() {
         noteMapSetTranspose(rs.transpose);
         simpleLedsSetRocker(rs.pin4High, rs.pin5High);
         simpleLedsSetButton24(rs.button24Low);
+        // Encoder-driven brightness control
+        if (rs.encDelta != 0) {
+            int v = (int)simpleLedsGetBrightness() + (int)rs.encDelta * 8; // step of 8 per detent
+            // Clamp to 0..255 without ambiguous indentation
+            if (v < 0) {
+                v = 0;
+            }
+            if (v > 255) {
+                v = 255;
+            }
+            simpleLedsSetBrightness((uint8_t)v);
+        }
     }
 
 #if DEBUG_ADC_MONITOR
