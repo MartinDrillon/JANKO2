@@ -175,3 +175,20 @@ static constexpr uint16_t kRepressHyst = 3;
 // Nombre d'échantillons consécutifs au-dessus de (vallée + hystérésis) pour valider la remontée
 static constexpr uint8_t  kRepressStableCount = 1; // passer à 2 si besoin de plus d'anti-rebond
 
+// === Calibration relative (pourcentages globaux) ===
+// Ces constantes pilotent l'adaptation des seuils par touche à partir des valeurs brutes Low/High.
+// Elles remplacent les marges absolues et s'appliquent en proportion de D = |High - Low|.
+namespace CalibCfg {
+    // Low opérationnel: LowOp = Low ± max(Min, Pct * D)
+    constexpr float    kLowMarginPct        = 0.10f;  // 10%
+    constexpr uint16_t kLowMarginMinCounts  = 20;     // plancher en counts
+
+    // High opérationnel: HighOp = High ∓ max(Min, Pct * D)
+    constexpr float    kHighTargetMarginPct = 0.15f;  // 15%
+    constexpr uint16_t kHighTargetMarginMin = 30;
+
+    // Release: Release = High ∓ max(Min, Pct * D)
+    constexpr float    kReleaseDeltaPct     = 0.25f;  // 25%
+    constexpr uint16_t kReleaseDeltaMin     = 50;
+}
+

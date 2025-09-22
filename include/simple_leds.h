@@ -15,6 +15,8 @@ void simpleLedsFrameFlush();
 
 // Calibration LED functions
 void setCalibrationLeds(bool enabled);  // Turn red LEDs 3,4,5 on/off
+// Calibration Phase 2: force all LEDs solid blue while enabled (overrides normal UI during flush)
+void simpleLedsSetCalibrationBlue(bool enabled);
 
 // Optional: feed rocker status (so this module doesn't read pins)
 void simpleLedsSetRocker(bool pin4High, bool pin5High);

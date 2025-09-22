@@ -448,8 +448,9 @@ void loop() {
     // (LEDs déjà flush en fin de frame si nécessaire)
 
     // Centralized I/O service (non-blocking, slow polling)
-    IoState::RockerStatus rs;
-    if (IoState::update(millis(), rs)) {
+    static IoState::RockerStatus rs; // cache across loops
+    bool changed = IoState::update(millis(), rs);
+    if (changed) {
         // Apply transpose and feed LEDs without extra pin reads here
         noteMapSetTranspose(rs.transpose);
         simpleLedsSetRocker(rs.pin4High, rs.pin5High);
@@ -473,6 +474,10 @@ void loop() {
 #endif
     // Service calibration (finalisation médiane)
     calibrationService();
+    // Service calibration UX FSM (button 24 control)
+    // We call with current millis() and button-24 state exposed by IoState.
+    // Use last rocker status cached in rs if available, else poll quickly here.
+    calibrationServiceFSM(millis(), rs.button24Low);
 }
 
 // (Calibration helper functions removed)
