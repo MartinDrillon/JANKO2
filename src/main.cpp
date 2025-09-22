@@ -8,8 +8,10 @@
 #include "velocity_engine.h"
 #include "calibration.h"
 #include "note_map.h"
+#include "io_state.h"
 #include "key_state.h"
 #include "calibration.h"
+#include "midi_out.h"
 #include <imxrt.h>  // pour DWT cycle counter (Teensy 4.x)
 #if DEBUG_ADC_MONITOR
 #include "adc_monitor.h"
@@ -254,6 +256,8 @@ void setup() {
     
     // Initialize LEDs
     simpleLedsInit();
+    // Initialize I/O state (rocker pins)
+    IoState::init();
     
     // Calibration LEDs no longer used (ensure off)
     setCalibrationLeds(false);
@@ -269,10 +273,11 @@ void setup() {
     
     // Initialize velocity engine
     VelocityEngine::initialize();
+    // Initialize MIDI output queue
+    MidiOut::init();
     // Init static thresholds (Phase1 dynamique)
     calibrationInitStatic();
-    // Phase2: démarrer collecte médiane Low
-    calibrationStartCollectLow();
+    // Ne pas démarrer de calibration au boot: conserver les seuils EEPROM
     enableCycleCounter();
     
     // Ready banner removed
@@ -348,6 +353,8 @@ void loop() {
 #endif
     // Flush LED strip une seule fois par frame (si changement)
     simpleLedsFrameFlush();
+    // MIDI: drain queue avec budget court, une seule fois par frame
+    MidiOut::service(50);
 #if DEBUG_DUPLICATE_DETECT
     gFramesSinceDupPrint++;
     if (gFramesSinceDupPrint >= DEBUG_DUPLICATE_PRINT_INTERVAL_FRAMES) {
@@ -416,6 +423,8 @@ void loop() {
 #endif
     // Flush LED strip une seule fois par frame (si changement)
     simpleLedsFrameFlush();
+    // MIDI: drain queue avec budget court, une seule fois par frame
+    MidiOut::service(50);
 #if DEBUG_DUPLICATE_DETECT
     gFramesSinceDupPrint++;
     if (gFramesSinceDupPrint >= DEBUG_DUPLICATE_PRINT_INTERVAL_FRAMES) {
@@ -437,11 +446,37 @@ void loop() {
     // USB MIDI is handled automatically
     // (LEDs déjà flush en fin de frame si nécessaire)
 
+    // Centralized I/O service (non-blocking, slow polling)
+    static IoState::RockerStatus rs; // cache across loops
+    bool changed = IoState::update(millis(), rs);
+    if (changed) {
+        // Apply transpose and feed LEDs without extra pin reads here
+        noteMapSetTranspose(rs.transpose);
+        simpleLedsSetRocker(rs.pin4High, rs.pin5High);
+        simpleLedsSetButton24(rs.button24Low);
+        // Encoder-driven brightness control
+        if (rs.encDelta != 0) {
+            int v = (int)simpleLedsGetBrightness() + (int)rs.encDelta * 8; // step of 8 per detent
+            // Clamp to 0..255 without ambiguous indentation
+            if (v < 0) {
+                v = 0;
+            }
+            if (v > 255) {
+                v = 255;
+            }
+            simpleLedsSetBrightness((uint8_t)v);
+        }
+    }
+
 #if DEBUG_ADC_MONITOR
     AdcMonitor::printPeriodic();
 #endif
     // Service calibration (finalisation médiane)
     calibrationService();
+    // Service calibration UX FSM (button 24 control)
+    // We call with current millis() and button-24 state exposed by IoState.
+    // Use last rocker status cached in rs if available, else poll quickly here.
+    calibrationServiceFSM(millis(), rs.button24Low);
 }
 
 // (Calibration helper functions removed)

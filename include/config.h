@@ -152,7 +152,7 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 #define DEBUG_ADC_MONITOR 1
 #endif
 #ifndef DEBUG_ADC_MONITOR_MUX
-#define DEBUG_ADC_MONITOR_MUX 1
+#define DEBUG_ADC_MONITOR_MUX 3
 #endif
 #ifndef DEBUG_ADC_MONITOR_CHANNEL
 #define DEBUG_ADC_MONITOR_CHANNEL 0
@@ -166,4 +166,29 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 // <1.0 rend les faibles vitesses plus sensibles (valeurs de vélocité plus élevées plus tôt)
 // >1.0 compresse le bas et étire le haut.
 static constexpr float kVelocityGamma = 0.20f; // Option A proposée
+
+// === Re-press detection (ThresholdMed) ===
+// Quand une touche est relâchée (sous ThresholdRelease) mais ne revient pas jusqu'à ThresholdLow,
+// on tracke la "vallée" (minimum) et, si la touche repart, on démarre le timing depuis cette vallée.
+// Hystérésis pour considérer la remontée depuis la vallée (en LSB ADC)
+static constexpr uint16_t kRepressHyst = 3;
+// Nombre d'échantillons consécutifs au-dessus de (vallée + hystérésis) pour valider la remontée
+static constexpr uint8_t  kRepressStableCount = 1; // passer à 2 si besoin de plus d'anti-rebond
+
+// === Calibration relative (pourcentages globaux) ===
+// Ces constantes pilotent l'adaptation des seuils par touche à partir des valeurs brutes Low/High.
+// Elles remplacent les marges absolues et s'appliquent en proportion de D = |High - Low|.
+namespace CalibCfg {
+    // Low opérationnel: LowOp = Low ± max(Min, Pct * D)
+    constexpr float    kLowMarginPct        = 0.10f;  // 10%
+    constexpr uint16_t kLowMarginMinCounts  = 10;     // plancher en counts
+
+    // High opérationnel: HighOp = High ∓ max(Min, Pct * D)
+    constexpr float    kHighTargetMarginPct = 0.15f;  // 15%
+    constexpr uint16_t kHighTargetMarginMin = 10;
+
+    // Release: Release = High ∓ max(Min, Pct * D)
+    constexpr float    kReleaseDeltaPct     = 0.15f;  // 15%
+    constexpr uint16_t kReleaseDeltaMin     = 10;
+}
 

@@ -2,6 +2,7 @@
 #include "velocity_calc.h"
 #include "config.h"
 #include "calibration.h"
+#include "midi_out.h"
 
 // === Global State Arrays Definition ===
 KeyData g_keys[N_MUX][N_CH];
@@ -17,8 +18,8 @@ void VelocityEngine::initialize() {
         }
     }
     
-    // Zero acquisition buffers
-    memset(&g_acquisition, 0, sizeof(g_acquisition));
+    // Zero acquisition buffers (value-initialize to avoid class-memaccess warnings)
+    g_acquisition = AcquisitionData{};
 }
 
 void VelocityEngine::processKey(uint8_t mux, uint8_t channel, 
@@ -32,20 +33,27 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
     g_acquisition.t_sample_us[mux][channel] = timestamp_us;
     
     KeyData& key = g_keys[mux][channel];
-    KeyState oldState = key.state;
+    //KeyState oldState = key.state; // unused in release
     
-    // Update last measurement
-    key.last_adc = adc_value;
-    key.last_sample_us = timestamp_us;
+    // Preserve previous measurement for edge detection
+    const uint16_t prev_adc = key.last_adc;
+    const uint32_t prev_t_us = key.last_sample_us;
     
     // State machine dispatch
     uint16_t thLow  = calibLow(mux, channel);
     uint16_t thHigh = calibHigh(mux, channel);
     uint16_t thRel  = calibRelease(mux, channel);
+    // Determine polarity sign based on thresholds
+    const int s = ((int)thHigh >= (int)thLow) ? +1 : -1; // +1 normal (press increases), -1 inverted (press decreases)
+    auto sCmp = [s](int lhs_minus_rhs) -> int { return s * lhs_minus_rhs; };
+    // Use config-defined hysteresis and stability for re-press rising detection
+    constexpr uint16_t kRepressHystCfg = kRepressHyst;
+    constexpr uint8_t  kRepressStableCountCfg = kRepressStableCount;
 
     switch (key.state) {
         case KeyState::IDLE:
-            if (adc_value >= thLow) {
+            // Start when crossing ThresholdLow in the press direction (true edge)
+            if (sCmp((int)adc_value - (int)thLow) >= 0 && sCmp((int)prev_adc - (int)thLow) < 0) {
                 key.state = KeyState::TRACKING;
                 key.adc_start = adc_value;
                 key.t_start_us = timestamp_us;
@@ -54,15 +62,19 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
             }
             break;
         case KeyState::TRACKING: {
-            if (adc_value < thLow) {
+            // Abort if we returned past ThresholdLow opposite the press direction
+            if (sCmp((int)adc_value - (int)thLow) < 0) {
                 resetKey(key);
                 break;
             }
-            if (adc_value > key.peak_adc) key.peak_adc = adc_value;
-            if (adc_value >= thHigh) {
+            // Update peak along the press direction
+            if (sCmp((int)adc_value - (int)key.peak_adc) > 0) key.peak_adc = adc_value;
+            // Trigger when crossing ThresholdHigh in the press direction
+            if (sCmp((int)adc_value - (int)thHigh) >= 0) {
                 int8_t note = effectiveNote(mux, channel);
                 if (note == DISABLED) { resetKey(key); break; }
-                uint16_t delta_adc = (adc_value > key.adc_start) ? (adc_value - key.adc_start) : 1;
+                int delta_s = sCmp((int)adc_value - (int)key.adc_start);
+                uint16_t delta_adc = (delta_s > 0) ? (uint16_t)delta_s : 1;
                 uint32_t dt = (timestamp_us > key.t_start_us) ? (timestamp_us - key.t_start_us) : 1;
                 uint8_t velocity = computeVelocity(delta_adc, dt);
                 sendNoteOn((uint8_t)note, velocity, mux, channel);
@@ -74,45 +86,80 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
             }
             break; }
         case KeyState::HELD:
-            if (adc_value > key.peak_adc) key.peak_adc = adc_value;
-            if (adc_value < thRel) {
+            if (sCmp((int)adc_value - (int)key.peak_adc) > 0) key.peak_adc = adc_value;
+            // Release when crossing release threshold opposite the press direction
+            if (sCmp((int)adc_value - (int)thRel) < 0) {
+                // Note considered released (hysteresis), transition to REARMED
                 sendNoteOff(key.current_note, mux, channel);
                 key.note_on_sent = false;
-                // mise à jour adaptative du High
+                // Update adaptive High peak per key
                 updateHighAfterNote(mux, channel, key.peak_adc);
                 key.state = KeyState::REARMED;
+                // Initialize re-press valley tracking (ThresholdMed)
+                key.rearm_min_adc = adc_value;
+                key.rearm_min_t_us = timestamp_us;
+                key.stable_up_count = 0;
+                key.stable_down_count = 0;
             }
             break;
-        case KeyState::REARMED:
-            if (adc_value < (thLow - 10)) {
-                key.state = KeyState::IDLE; // fully released deep
-            } else if (adc_value >= thLow) {
-                key.state = KeyState::TRACKING;
-                key.adc_start = adc_value;
-                key.t_start_us = timestamp_us;
-                key.peak_adc = adc_value;
+        case KeyState::REARMED: {
+            // Track extremum after release in the release direction (min for s=+1, max for s=-1)
+            if (sCmp((int)adc_value - (int)key.rearm_min_adc) < 0) {
+                key.rearm_min_adc = adc_value;
+                key.rearm_min_t_us = timestamp_us;
+                key.stable_up_count = 0; // reset rising stability when still moving away from press direction
             }
-            break;
+
+            // If fully released deeply (moved 10 counts opposite the press direction), go back to IDLE
+            if (sCmp((int)adc_value - (int)thLow) <= -10) {
+                key.state = KeyState::IDLE;
+                break;
+            }
+
+            // Detect re-press before returning to ThresholdLow:
+            // Start TRACKING from the recorded valley so dv/dt uses the partial path.
+            if (sCmp((int)adc_value - (int)key.rearm_min_adc) > (int)kRepressHystCfg) {
+                key.stable_up_count++;
+                if (key.stable_up_count >= kRepressStableCountCfg) {
+                    key.state = KeyState::TRACKING;
+                    key.adc_start = key.rearm_min_adc;        // start from ThresholdMed
+                    key.t_start_us = key.rearm_min_t_us;
+                    key.current_velocity = 0;
+                    key.peak_adc = adc_value;
+                    key.stable_up_count = 0;
+                    key.stable_down_count = 0;
+                }
+            } else {
+                // Not yet rising stably
+                if (key.stable_up_count > 0) key.stable_up_count--;
+            }
+            break; }
     }
-    
-    // Log state changes for debugging
+    // Update last measurement after processing
+    key.last_adc = adc_value;
+    key.last_sample_us = timestamp_us;
+
     // (Debug logging removed)
 }
 
 // Removed advanced handlers & velocity math (simplified inline in processKey switch)
 
 void VelocityEngine::sendNoteOn(uint8_t note, uint8_t velocity, uint8_t mux, uint8_t channel) {
-    usbMIDI.sendNoteOn(note, velocity, 1); // Channel 1
-    
-    // Debug output uniquement pour canal 6
-    // Debug removed
+    MidiOut::Event ev{MidiOut::Kind::NoteOn, kMidiChannel, note, velocity};
+    if (!MidiOut::enqueue(ev)) {
+        // Fallback to immediate send to avoid missed notes if queue is saturated
+        usbMIDI.sendNoteOn(note, velocity, kMidiChannel);
+        usbMIDI.send_now();
+    }
 }
 
 void VelocityEngine::sendNoteOff(uint8_t note, uint8_t mux, uint8_t channel) {
-    usbMIDI.sendNoteOff(note, 0, 1); // Channel 1
-    
-    // Debug output uniquement pour canal 6
-    // Debug removed
+    MidiOut::Event ev{MidiOut::Kind::NoteOff, kMidiChannel, note, 0};
+    if (!MidiOut::enqueue(ev)) {
+        // Fallback to immediate send to avoid stuck notes
+        usbMIDI.sendNoteOff(note, 0, kMidiChannel);
+        usbMIDI.send_now();
+    }
 }
 
 void VelocityEngine::resetKey(KeyData& key) {
@@ -122,6 +169,9 @@ void VelocityEngine::resetKey(KeyData& key) {
     key.note_on_sent = false;
     key.current_note = 0;
     key.current_velocity = 0;
+    key.peak_adc = 0;
+    key.rearm_min_adc = 0;
+    key.rearm_min_t_us = 0;
 }
 
 void VelocityEngine::printKeyStats(uint8_t, uint8_t) {}

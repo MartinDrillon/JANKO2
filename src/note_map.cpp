@@ -3,6 +3,16 @@
 // Global transpose value (default: no transpose)
 int8_t gTranspose = 0;
 
+static inline int8_t clampTranspose(int8_t s) {
+    if (s < -24) return -24;
+    if (s >  24) return  24;
+    return s;
+}
+
+void noteMapSetTranspose(int8_t semitones) {
+    gTranspose = clampTranspose(semitones);
+}
+
 // Note mapping table [mux][channel] -> MIDI note
 // Default: linear mapping (48 + mux*16 + channel) starting from C3
 // Use DISABLED (-1) to disable specific keys
@@ -53,19 +63,16 @@ int8_t effectiveNote(uint8_t mux, uint8_t channel) {
     if (mappedNote == DISABLED) {
         return DISABLED;
     }
-    
-    // For now, return the note without transpose
-    // TODO: Add pin-controlled transpose later
-    // int16_t transposedNote = mappedNote + (transposePin ? gTranspose : 0);
-    
-    // Validate MIDI range [0..127]
-    if (mappedNote < 0 || mappedNote > 127) {
+    // Apply current global transpose (updated by IoState via noteMapSetTranspose)
+    int16_t transposed = (int16_t)mappedNote + (int16_t)gTranspose;
+    if (transposed < 0 || transposed > 127) {
         return DISABLED;
     }
-    
-    return mappedNote;
+    return (int8_t)transposed;
 }
 
 void printNoteMap() {
     // Mapping print removed (no Serial in performance build)
 }
+
+// Pin polling moved to IoState
