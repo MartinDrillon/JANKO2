@@ -192,22 +192,29 @@ void calibrationServiceFSM(uint32_t nowMs, bool button24Low) {
 			if (nowMs - gUxT0 >= Calib::kHoldToFinishMs) {
 				// Finalize High from captured peaks, with fallback if swing too small
 				for (uint8_t m=0;m<N_MUX;m++) for (uint8_t c=0;c<N_CH;c++) {
-					uint16_t low = gThLow[m][c];
+					uint16_t lowPrev = gThLow[m][c];
 					uint16_t peak = gPhase2Peak[m][c];
-					int D = abs((int)peak - (int)low);
+					int s = ((int)peak >= (int)lowPrev) ? +1 : -1; // press direction
+					int D = abs((int)peak - (int)lowPrev);
+					// Recompute Low using polarity and percent margin (based on estimated median)
+					int median_est = (int)lowPrev - (int)CalibCfg::kLowMarginMinCounts; // from finalizeMedian logic
+					int lowMargin = std::max<int>((int)CalibCfg::kLowMarginMinCounts, (int)(CalibCfg::kLowMarginPct * (float)D));
+					int lowNew = median_est + s * lowMargin;
+					if (lowNew < 0) lowNew = 0; if (lowNew > 1023) lowNew = 1023;
+					gThLow[m][c] = (uint16_t)lowNew;
+
+					// Compute High target
 					if (D < (int)Calib::kMinSwingForHigh) {
-						// Fallback to either previous High or default 915 if not set
-						if (gThHigh[m][c] < (uint16_t)(low + Calib::kMinSwingCounts)) {
-							gThHigh[m][c] = std::max<uint16_t>((uint16_t)(low + Calib::kMinSwingCounts), Calib::kHighStartDefault);
-						}
+						// Too small swing: enforce minimum around Low in the press direction
+						int target = lowNew + s * (int)Calib::kMinSwingCounts;
+						if (target < 0) target = 0; if (target > 1023) target = 1023;
+						gThHigh[m][c] = (uint16_t)target;
 					} else {
-						int s = ((int)peak >= (int)low) ? +1 : -1;
-						int margin = (int)CalibCfg::kHighTargetMarginMin;
-						int rel = (int)(CalibCfg::kHighTargetMarginPct * (float)D);
-						if (rel > margin) margin = rel;
+						int margin = std::max<int>((int)CalibCfg::kHighTargetMarginMin, (int)(CalibCfg::kHighTargetMarginPct * (float)D));
 						int target = (int)peak - s * margin;
-						if (target < (int)(low + Calib::kMinSwingCounts)) target = low + Calib::kMinSwingCounts;
-						if (target > 1023) target = 1023;
+						// Enforce minimal swing symmetrical to polarity
+						if (abs(target - lowNew) < (int)Calib::kMinSwingCounts) target = lowNew + s * (int)Calib::kMinSwingCounts;
+						if (target < 0) target = 0; if (target > 1023) target = 1023;
 						gThHigh[m][c] = (uint16_t)target;
 					}
 				}
