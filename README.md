@@ -3,8 +3,6 @@
 Le Clavicore est un contrôleur midi basé sur la disposition Janko. Le jeu est dynamique. 
 Il fonctionne grâce à des interrupteurs MX magnétiques standards et un Teensy 4.1.  
 
-![Clavicore 0.1](photos/Clavicore_0_1_bis.jpg)
-
 ---
 
 ## JANKO LAYOUT
