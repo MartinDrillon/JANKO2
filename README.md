@@ -3,7 +3,7 @@
 Le Clavicore est un contrôleur midi basé sur la disposition Janko. Le jeu est dynamique. 
 Il fonctionne grâce à des interrupteurs MX magnétiques standards et un Teensy 4.1.  
 
-![Clavicore 0.1](photos/Clavicore_0_1.jpg)
+![Clavicore 0.1](photos/Clavicore_0_1_bis.jpg)
 
 ---
 
@@ -21,10 +21,11 @@ Un capteur hall génère le voltage relatif à la position de l’aimant dans la
 
 La difficulté est de suivre simultanément et avec précision la position des 120 touches. Avec quelques multiplexeurs, buffers et autres, j’arrive à environ 13 000 échantillons de position par seconde et par touche. Au delà, les ADC du Teensy ne suivent plus. 
 
-Le programme a été vibe codé. Je crois que c’est moche, mais ça fonctionne. Des ajustements doivent encore être faits au niveau de la calibration des touchens, de la courbe de vélocité, etc.
+Le programme a été vibe codé. Je crois que c’est moche, mais ça fonctionne. Des ajustements doivent encore être faits au niveau de la calibration des touches, de la courbe de vélocité, etc.
 
 ![Clavicore 0.1 PCB](photos/Clavicore_0_1_PCB.jpg)
 
+Le programme a été vibe codé. Je crois que c’est moche, mais ça fonctionne. Des ajustements doivent encore être faits au niveau de la calibration des touches, de la courbe de vélocité, etc.
 
 ## DÉMONSTRATION
 
