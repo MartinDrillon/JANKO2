@@ -186,6 +186,9 @@ static constexpr float kVelocityGammaDefault = 0.20f;
 static constexpr uint16_t kRepressHyst = 3;
 // Nombre d'échantillons consécutifs au-dessus de (vallée + hystérésis) pour valider la remontée
 static constexpr uint8_t  kRepressStableCount = 1; // passer à 2 si besoin de plus d'anti-rebond
+// Retour minimum requis avant de permettre un re-trigger (en % de la course totale |High-Low|)
+// Ex: 0.20f = la touche doit retomber d'au moins 20% de sa course avant de pouvoir être re-déclenchée
+static constexpr float    kRepressMinReturnPct = 0.40f;
 
 // === Calibration relative (pourcentages globaux) ===
 // Ces constantes pilotent l'adaptation des seuils par touche à partir des valeurs brutes Low/High.

@@ -12,6 +12,7 @@ uint8_t  gHighFastSeen[N_MUX][N_CH];
 // === Phase2: histogrammes pour médiane Low ===
 static uint16_t *gHist = nullptr; // allocation unique N_MUX*N_CH*1024 entries (lazy)
 static uint32_t gCountPerKey[N_MUX][N_CH];
+static uint16_t gMedianFromPhase1[N_MUX][N_CH]; // Store median values calculated in Phase 1
 static bool gKeyPressedInPhase2[N_MUX][N_CH]; // Track which keys were pressed during Phase 2
 enum class CalibState { STATIC_INIT, COLLECT_LOW, FINALIZE_LOW, RUN };
 static CalibState gState = CalibState::STATIC_INIT;
@@ -84,10 +85,17 @@ void calibrationFrameIngest(const uint16_t frameValues[N_MUX][N_CH]) {
 
 static void finalizeMedian() {
 	if (!gHist) { gState = CalibState::RUN; return; }
+	
+	// Calculate and store median values from Phase 1 histogram
+	// DO NOT modify gThLow/gThHigh here - preserve EEPROM values
 	for (uint8_t m=0;m<N_MUX;m++) {
 		for (uint8_t c=0;c<N_CH;c++) {
 			uint32_t total = gCountPerKey[m][c];
-			if (total == 0) continue; // garde valeurs existantes
+			if (total == 0) {
+				// No data collected: use current Low as fallback median
+				gMedianFromPhase1[m][c] = gThLow[m][c];
+				continue;
+			}
 			uint32_t half = total / 2;
 			uint32_t accum = 0;
 			uint16_t median = 0;
@@ -95,16 +103,11 @@ static void finalizeMedian() {
 				accum += histAt(m,c,v);
 				if (accum >= half) { median = v; break; }
 			}
-			// Sans High fiable on pose Low = median + plancher (pct*D inconnu ici)
-			uint16_t low = (uint16_t)std::min<int>(median + CalibCfg::kLowMarginMinCounts, 1023);
-			gThLow[m][c] = low;
-			// Ajuster High si inférieur aux contraintes
-			if (gThHigh[m][c] < (uint16_t)(low + Calib::kMinSwingCounts)) {
-				gThHigh[m][c] = (uint16_t)std::min<int>(low + Calib::kMinSwingCounts, 1023);
-			}
+			gMedianFromPhase1[m][c] = median;
 		}
 	}
-	// Option: libérer mémoire (on libère pour récupérer RAM)
+	
+	// Free memory and transition to RUN state
 	free(gHist); gHist = nullptr;
 	gState = CalibState::RUN;
 }
@@ -217,11 +220,11 @@ void calibrationServiceFSM(uint32_t nowMs, bool button24Low) {
 						
 						// Update Low ONLY if key was pressed (significant swing detected)
 						if (gKeyPressedInPhase2[m][c]) {
-							// Key was pressed: recompute Low with polarity-aware margin
-							int median_est = (int)lowPrev - (int)CalibCfg::kLowMarginMinCounts;
+							// Key was pressed: use median from Phase 1 as base
+							uint16_t median = gMedianFromPhase1[m][c];
 							int lowMargin = std::max<int>((int)CalibCfg::kLowMarginMinCounts, 
 							                               (int)(CalibCfg::kLowMarginPct * (float)D));
-							int lowNew = median_est + s * lowMargin;
+							int lowNew = (int)median + s * lowMargin;
 							if (lowNew < 0) lowNew = 0; 
 							if (lowNew > 1023) lowNew = 1023;
 							gThLow[m][c] = (uint16_t)lowNew;

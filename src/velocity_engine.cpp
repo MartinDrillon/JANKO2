@@ -49,6 +49,7 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
     // Use config-defined hysteresis and stability for re-press rising detection
     constexpr uint16_t kRepressHystCfg = kRepressHyst;
     constexpr uint8_t  kRepressStableCountCfg = kRepressStableCount;
+    constexpr float    kRepressMinReturnPctCfg = kRepressMinReturnPct;
 
     switch (key.state) {
         case KeyState::IDLE:
@@ -117,12 +118,19 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
             }
 
             // Detect re-press before returning to ThresholdLow:
-            // Start TRACKING from the recorded valley so dv/dt uses the partial path.
-            if (sCmp((int)adc_value - (int)key.rearm_min_adc) > (int)kRepressHystCfg) {
+            // Requires two conditions:
+            // 1. Valley must have returned at least kRepressMinReturnPct% of total swing (|High-Low|)
+            // 2. Current value rising above valley + hysteresis
+            int32_t swing = abs((int)thHigh - (int)thLow);
+            int32_t valley_return = abs((int)key.rearm_min_adc - (int)thHigh); // Distance from High to valley
+            int32_t min_return_required = (int32_t)(kRepressMinReturnPctCfg * (float)swing);
+            
+            if (valley_return >= min_return_required && 
+                sCmp((int)adc_value - (int)key.rearm_min_adc) > (int)kRepressHystCfg) {
                 key.stable_up_count++;
                 if (key.stable_up_count >= kRepressStableCountCfg) {
                     key.state = KeyState::TRACKING;
-                    key.adc_start = key.rearm_min_adc;        // start from ThresholdMed
+                    key.adc_start = key.rearm_min_adc;        // start from valley (ThresholdMed)
                     key.t_start_us = key.rearm_min_t_us;
                     key.current_velocity = 0;
                     key.peak_adc = adc_value;
@@ -130,7 +138,7 @@ void VelocityEngine::processKey(uint8_t mux, uint8_t channel,
                     key.stable_down_count = 0;
                 }
             } else {
-                // Not yet rising stably
+                // Not yet rising stably or insufficient return
                 if (key.stable_up_count > 0) key.stable_up_count--;
             }
             break; }
