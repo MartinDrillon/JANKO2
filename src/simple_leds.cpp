@@ -43,6 +43,15 @@ void simpleLedsInit() {
     g_needFlush = false;
     g_brightness = 80;
     g_calibBlueOverride = false;
+    
+    // Force un refresh initial pour que toutes les LEDs s'allument correctement
+    // Lecture de l'état réel de PIN_INPUT pour initialiser g_cachedColor
+    int state = digitalRead(PIN_INPUT);
+    g_cachedColor = (state == HIGH) ? strip.Color(0,0,80) : 0;
+    g_needFlush = true;
+    
+    // Force le flush initial pour afficher l'état correct dès le démarrage
+    simpleLedsFrameFlush();
 }
 
 void simpleLedsTask() {
