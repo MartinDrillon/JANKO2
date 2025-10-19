@@ -204,38 +204,60 @@ void calibrationServiceFSM(uint32_t nowMs, bool button24Low) {
 		case UX::HoldEnd:
 			if (!button24Low) { gUx = UX::Phase2; break; }
 			if (nowMs - gUxT0 >= Calib::kHoldToFinishMs) {
-				// Finalize: update Low for ALL keys, but High ONLY for pressed keys
+				// Finalize: update Low+High ONLY for pressed keys
 				for (uint8_t m=0;m<N_MUX;m++) {
 					for (uint8_t c=0;c<N_CH;c++) {
 						uint16_t lowPrev = gThLow[m][c];
 						uint16_t peak = gPhase2Peak[m][c];
-						int s = ((int)peak >= (int)lowPrev) ? +1 : -1; // press direction
-						int D = abs((int)peak - (int)lowPrev);
 						
-						// ALWAYS recompute Low using polarity and percent margin
-						int median_est = (int)lowPrev - (int)CalibCfg::kLowMarginMinCounts;
-						int lowMargin = std::max<int>((int)CalibCfg::kLowMarginMinCounts, (int)(CalibCfg::kLowMarginPct * (float)D));
-						int lowNew = median_est + s * lowMargin;
-						if (lowNew < 0) lowNew = 0; if (lowNew > 1023) lowNew = 1023;
-						gThLow[m][c] = (uint16_t)lowNew;
+						// Compute polarity and swing from Phase2 observations
+						int dPeak = (int)peak - (int)lowPrev;
+						int D = abs(dPeak);
+						int s = (dPeak >= 0) ? +1 : -1;
+						
+						// Update Low ONLY if key was pressed (significant swing detected)
+						if (gKeyPressedInPhase2[m][c]) {
+							// Key was pressed: recompute Low with polarity-aware margin
+							int median_est = (int)lowPrev - (int)CalibCfg::kLowMarginMinCounts;
+							int lowMargin = std::max<int>((int)CalibCfg::kLowMarginMinCounts, 
+							                               (int)(CalibCfg::kLowMarginPct * (float)D));
+							int lowNew = median_est + s * lowMargin;
+							if (lowNew < 0) lowNew = 0; 
+							if (lowNew > 1023) lowNew = 1023;
+							gThLow[m][c] = (uint16_t)lowNew;
+						}
+						// If key was NOT pressed: keep existing Low from EEPROM/previous calibration
 
 						// Update High ONLY if key was pressed during Phase 2
 						if (gKeyPressedInPhase2[m][c]) {
-							if (D < (int)Calib::kMinSwingForHigh) {
+							uint16_t lowFinal = gThLow[m][c]; // Use potentially updated Low
+							int dFinal = (int)peak - (int)lowFinal;
+							int DFinal = abs(dFinal);
+							int sFinal = (dFinal >= 0) ? +1 : -1;
+							
+							if (DFinal < (int)Calib::kMinSwingForHigh) {
 								// Too small swing: enforce minimum around Low in the press direction
-								int target = lowNew + s * (int)Calib::kMinSwingCounts;
-								if (target < 0) target = 0; if (target > 1023) target = 1023;
+								int target = (int)lowFinal + sFinal * (int)Calib::kMinSwingCounts;
+								if (target < 0) target = 0; 
+								if (target > 1023) target = 1023;
 								gThHigh[m][c] = (uint16_t)target;
 							} else {
-								int margin = std::max<int>((int)CalibCfg::kHighTargetMarginMin, (int)(CalibCfg::kHighTargetMarginPct * (float)D));
-								int target = (int)peak - s * margin;
+								int margin = std::max<int>((int)CalibCfg::kHighTargetMarginMin, 
+								                            (int)(CalibCfg::kHighTargetMarginPct * (float)DFinal));
+								int target = (int)peak - sFinal * margin;
 								// Enforce minimal swing symmetrical to polarity
-								if (abs(target - lowNew) < (int)Calib::kMinSwingCounts) target = lowNew + s * (int)Calib::kMinSwingCounts;
-								if (target < 0) target = 0; if (target > 1023) target = 1023;
+								int minTarget = (int)lowFinal + sFinal * (int)Calib::kMinSwingCounts;
+								if (sFinal > 0) {
+									if (target < minTarget) target = minTarget;
+								} else {
+									if (target > minTarget) target = minTarget;
+								}
+								if (target < 0) target = 0; 
+								if (target > 1023) target = 1023;
 								gThHigh[m][c] = (uint16_t)target;
 							}
 						}
-						// If key was NOT pressed, gThHigh[m][c] keeps its previous value from EEPROM
+						// If key was NOT pressed, both gThLow and gThHigh keep their previous EEPROM values
 					}
 				}
 				
@@ -247,7 +269,7 @@ void calibrationServiceFSM(uint32_t nowMs, bool button24Low) {
 						if (gKeyPressedInPhase2[m][c]) calibratedCount++;
 					}
 				}
-				Serial.printf("[Calibration] Completed: %u keys calibrated (High updated), all keys Low updated\n", calibratedCount);
+				Serial.printf("[Calibration] Completed: %u keys calibrated (Low+High updated), other keys unchanged\n", calibratedCount);
 #endif
 				
 				// Save to EEPROM and exit calibration
