@@ -1,5 +1,9 @@
 ﻿#pragma once
 #include <Arduino.h>
+#include "config.h"
+
+// Runtime velocity gamma (adjustable via encoder)
+extern float gVelocityGamma;
 
 // Simple base4-style velocity computation
 // delta_adc: difference between thresholdHigh and starting ADC value (>=1)
@@ -16,8 +20,8 @@ inline uint8_t computeVelocity(uint16_t delta_adc, uint32_t dt_us) {
     if (norm < 0.f) norm = 0.f;
     if (norm > 1.f) norm = 1.f;
     // Courbe: applique un exposant (gamma) pour rendre la réponse plus sensible
-    // aux vitesses lentes quand gamma < 1.0
-    norm = powf(norm, kVelocityGamma);
+    // aux vitesses lentes quand gamma < 1.0; use runtime gamma
+    norm = powf(norm, gVelocityGamma);
     uint8_t vel = 1 + static_cast<uint8_t>(norm * 126.0f);
     if (vel < 1) vel = 1;
     if (vel > 127) vel = 127;

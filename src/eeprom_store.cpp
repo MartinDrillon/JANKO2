@@ -4,14 +4,14 @@
 namespace {
     struct Header {
         uint32_t magic;   // 'J2TH'
-        uint16_t version; // 1
+        uint16_t version; // 2 (added velocity gamma)
         uint16_t nMux;
         uint16_t nCh;
-        uint32_t crc;     // CRC32 of payload (low+high arrays)
+        uint32_t crc;     // CRC32 of payload (low+high arrays + gamma)
     } __attribute__((packed));
 
     constexpr uint32_t kMagic = 0x4A325448; // 'J2TH'
-    constexpr uint16_t kVersion = 1;
+    constexpr uint16_t kVersion = 2;
 
     uint32_t crc32_update(uint32_t crc, uint8_t data) {
         crc ^= data;
@@ -30,10 +30,10 @@ namespace {
 
 namespace EepromStore {
     static size_t payloadSize() {
-        return (size_t)N_MUX * (size_t)N_CH * sizeof(uint16_t) * 2; // low + high
+        return (size_t)N_MUX * (size_t)N_CH * sizeof(uint16_t) * 2 + sizeof(float); // low + high + gamma
     }
 
-    bool load(uint16_t low[N_MUX][N_CH], uint16_t high[N_MUX][N_CH]) {
+    bool load(uint16_t low[N_MUX][N_CH], uint16_t high[N_MUX][N_CH], float* gamma) {
         Header hdr{};
         EEPROM.get(0, hdr);
         if (hdr.magic != kMagic || hdr.version != kVersion || hdr.nMux != N_MUX || hdr.nCh != N_CH) {
@@ -66,11 +66,15 @@ namespace EepromStore {
                 high[m][c] = v; idx += 2;
             }
         }
+        // Load gamma if pointer provided
+        if (gamma) {
+            memcpy(gamma, &buf[idx], sizeof(float));
+        }
         free(buf);
         return true;
     }
 
-    void save(const uint16_t low[N_MUX][N_CH], const uint16_t high[N_MUX][N_CH]) {
+    void save(const uint16_t low[N_MUX][N_CH], const uint16_t high[N_MUX][N_CH], const float* gamma) {
         Header hdr{};
         hdr.magic = kMagic;
         hdr.version = kVersion;
@@ -94,6 +98,9 @@ namespace EepromStore {
                 buf[idx++] = (uint8_t)(v >> 8);
             }
         }
+        // Save gamma: use provided value or default
+        float gammaVal = gamma ? *gamma : kVelocityGammaDefault;
+        memcpy(&buf[idx], &gammaVal, sizeof(float));
         hdr.crc = crc32_buf(buf, psize);
         // Write header
         EEPROM.put(0, hdr);

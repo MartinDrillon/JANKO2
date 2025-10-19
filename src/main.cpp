@@ -6,6 +6,7 @@
 #include "config.h"
 #include "simple_leds.h"
 #include "velocity_engine.h"
+#include "velocity_calc.h"
 #include "calibration.h"
 #include "note_map.h"
 #include "io_state.h"
@@ -16,6 +17,9 @@
 #if DEBUG_ADC_MONITOR
 #include "adc_monitor.h"
 #endif
+
+// === Runtime velocity gamma (adjustable via encoder) ===
+float gVelocityGamma = kVelocityGammaDefault;
 
 // === ADC Instance ===
 static ADC gAdc;
@@ -275,8 +279,18 @@ void setup() {
     VelocityEngine::initialize();
     // Initialize MIDI output queue
     MidiOut::init();
-    // Init static thresholds (Phase1 dynamique)
+    // Init static thresholds (Phase1 dynamique) and load velocity gamma from EEPROM
     calibrationInitStatic();
+    // Load velocity gamma from EEPROM if available
+    {
+        uint16_t tmpLow[N_MUX][N_CH], tmpHigh[N_MUX][N_CH];
+        float tmpGamma = kVelocityGammaDefault;
+        if (EepromStore::load(tmpLow, tmpHigh, &tmpGamma)) {
+            gVelocityGamma = tmpGamma;
+        }
+    }
+    // Set LED brightness to constant value (no longer adjustable via encoder)
+    simpleLedsSetBrightness(kLedBrightness);
     // Ne pas démarrer de calibration au boot: conserver les seuils EEPROM
     enableCycleCounter();
     
@@ -454,17 +468,29 @@ void loop() {
         noteMapSetTranspose(rs.transpose);
         simpleLedsSetRocker(rs.pin4High, rs.pin5High);
         simpleLedsSetButton24(rs.button24Low);
-        // Encoder-driven brightness control
+        // Encoder-driven velocity gamma adjustment (±0.02 per detent, inverted)
         if (rs.encDelta != 0) {
-            int v = (int)simpleLedsGetBrightness() + (int)rs.encDelta * 8; // step of 8 per detent
-            // Clamp to 0..255 without ambiguous indentation
-            if (v < 0) {
-                v = 0;
-            }
-            if (v > 255) {
-                v = 255;
-            }
-            simpleLedsSetBrightness((uint8_t)v);
+            gVelocityGamma -= (float)rs.encDelta * 0.02f;
+            // Clamp to reasonable range 0.05..2.0
+            if (gVelocityGamma < 0.05f) gVelocityGamma = 0.05f;
+            if (gVelocityGamma > 2.0f) gVelocityGamma = 2.0f;
+#if DEBUG_GAMMA_MONITOR
+            Serial.printf("VelocityGamma=%.3f\n", gVelocityGamma);
+#endif
+        }
+        // Button 24 clicks: short/double saves gamma, triple resets
+        if (rs.btn24Click == IoState::Btn24Click::Short || rs.btn24Click == IoState::Btn24Click::Double) {
+            // Save current gamma to EEPROM
+            EepromStore::save(gThLow, gThHigh, &gVelocityGamma);
+#if DEBUG_GAMMA_MONITOR
+            Serial.printf("VelocityGamma=%.3f [SAVED to EEPROM]\n", gVelocityGamma);
+#endif
+        } else if (rs.btn24Click == IoState::Btn24Click::Triple) {
+            // Reset gamma to default
+            gVelocityGamma = kVelocityGammaDefault;
+#if DEBUG_GAMMA_MONITOR
+            Serial.printf("VelocityGamma=%.3f [RESET to default]\n", gVelocityGamma);
+#endif
         }
     }
 

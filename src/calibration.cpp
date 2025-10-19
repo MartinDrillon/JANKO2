@@ -23,10 +23,10 @@ static inline uint16_t & histAt(uint8_t m, uint8_t c, uint16_t v) {
 
 void calibrationInitStatic() {
 	gState = CalibState::STATIC_INIT;
-	// Try load from EEPROM first
+	// Try load from EEPROM first (gamma loaded separately in main.cpp)
 	uint16_t lowTmp[N_MUX][N_CH];
 	uint16_t highTmp[N_MUX][N_CH];
-	bool loaded = EepromStore::load(lowTmp, highTmp);
+	bool loaded = EepromStore::load(lowTmp, highTmp, nullptr);
 	for (uint8_t m=0;m<N_MUX;m++) {
 		for (uint8_t c=0;c<N_CH;c++) {
 			if (loaded) {
@@ -121,7 +121,7 @@ bool calibrationIsRunning() { return gState == CalibState::RUN; }
 void calibrationLoadFromEeprom() {
 	uint16_t lowTmp[N_MUX][N_CH];
 	uint16_t highTmp[N_MUX][N_CH];
-	if (EepromStore::load(lowTmp, highTmp)) {
+	if (EepromStore::load(lowTmp, highTmp, nullptr)) {
 		for (uint8_t m=0;m<N_MUX;m++) for (uint8_t c=0;c<N_CH;c++) {
 			gThLow[m][c] = lowTmp[m][c];
 			gThHigh[m][c] = highTmp[m][c];
@@ -129,7 +129,8 @@ void calibrationLoadFromEeprom() {
 	}
 }
 void calibrationSaveToEeprom() {
-	EepromStore::save(gThLow, gThHigh);
+	// Save thresholds only; gamma is managed separately in main.cpp
+	EepromStore::save(gThLow, gThHigh, nullptr);
 }
 
 // === Calibration FSM driven by button 24 (LOW when pressed) ===

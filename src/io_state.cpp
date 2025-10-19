@@ -2,12 +2,20 @@
 
 namespace IoState {
     static bool sInited = false;
-    static RockerStatus sLast{true, true, 0, false, 0};
+    static RockerStatus sLast{true, true, 0, false, 0, Btn24Click::None};
     static uint32_t sLastPollMs = 0;
     static constexpr uint32_t kPollPeriodMs = 10; // ~100 Hz
     // Quadrature decoder state
     static volatile int16_t sEncAccum = 0;
     static volatile uint8_t sEncState = 0; // 2-bit: (A<<1)|B
+    // Button 24 click detection state
+    static bool sBtn24Prev = false; // false = released (HIGH when not pressed)
+    static uint32_t sBtn24PressTimeMs = 0;
+    static uint8_t sBtn24ClickCount = 0;
+    static uint32_t sBtn24LastReleaseMs = 0;
+    static constexpr uint32_t kClickWindowMs = 400; // max time between clicks for double/triple
+    static constexpr uint32_t kShortPressMaxMs = 300; // short press < 300ms
+    static constexpr uint32_t kDebounceMs = 20;
 
     // Transition table: prev(2b)<<2 | cur(2b) -> delta {-1,0,+1}
     // Valid steps: 00->01(+1), 01->11(+1), 11->10(+1), 10->00(+1)
@@ -64,11 +72,14 @@ namespace IoState {
     sEncAccum = 0;
     attachInterrupt(digitalPinToInterrupt(kPinEncA), onEncChange, CHANGE);
     attachInterrupt(digitalPinToInterrupt(kPinEncB), onEncChange, CHANGE);
+        // Button 24 click detection init
+        sBtn24Prev = b24low;
         sLast.pin4High = p4;
         sLast.pin5High = p5;
         sLast.transpose = calcTranspose(p4, p5);
         sLast.button24Low = b24low;
         sLast.encDelta = 0;
+        sLast.btn24Click = Btn24Click::None;
         sLastPollMs = millis();
         sInited = true;
     }
@@ -94,15 +105,48 @@ namespace IoState {
     // Each valid transition gives +/-1; typical encoders produce 4 transitions per detent.
     // Convert to detents (round toward zero)
     int8_t encDelta = (int8_t)(acc / 4);
-        bool changed = (p4 != sLast.pin4High) || (p5 != sLast.pin5High) || (tr != sLast.transpose) || (b24low != sLast.button24Low);
-        if (changed || encDelta != 0) {
-            sLast.pin4High = p4;
-            sLast.pin5High = p5;
-            sLast.transpose = tr;
-            sLast.button24Low = b24low;
-            sLast.encDelta = encDelta;
+        // Button 24 click detection (short/double/triple, not long 3s hold)
+        Btn24Click detectedClick = Btn24Click::None;
+        if (sBtn24Prev && !b24low) {
+            // Button released (pressed->released transition)
+            uint32_t pressDur = nowMs - sBtn24PressTimeMs;
+            if (pressDur >= kDebounceMs && pressDur < kShortPressMaxMs) {
+                // Valid short press (<300ms)
+                uint32_t timeSinceLastRelease = nowMs - sBtn24LastReleaseMs;
+                if (timeSinceLastRelease < kClickWindowMs && sBtn24ClickCount > 0) {
+                    // Within window: increment click count
+                    sBtn24ClickCount++;
+                } else {
+                    // Start new click sequence
+                    sBtn24ClickCount = 1;
+                }
+                sBtn24LastReleaseMs = nowMs;
+            }
+        } else if (!sBtn24Prev && b24low) {
+            // Button pressed (released->pressed transition)
+            sBtn24PressTimeMs = nowMs;
         }
+        // Check if click window expired
+        if (sBtn24ClickCount > 0 && (nowMs - sBtn24LastReleaseMs) >= kClickWindowMs) {
+            // Window expired: report accumulated clicks
+            if (sBtn24ClickCount == 1) detectedClick = Btn24Click::Short;
+            else if (sBtn24ClickCount == 2) detectedClick = Btn24Click::Double;
+            else if (sBtn24ClickCount >= 3) detectedClick = Btn24Click::Triple;
+#ifdef DEBUG_GAMMA_MONITOR
+            Serial.printf("[IoState] Button24 click detected: count=%u type=%d\n", sBtn24ClickCount, (int)detectedClick);
+#endif
+            sBtn24ClickCount = 0;
+        }
+        sBtn24Prev = b24low;
+        bool changed = (p4 != sLast.pin4High) || (p5 != sLast.pin5High) || (tr != sLast.transpose) || (b24low != sLast.button24Low);
+        // Always update btn24Click (even if None) to clear previous clicks
+        sLast.pin4High = p4;
+        sLast.pin5High = p5;
+        sLast.transpose = tr;
+        sLast.button24Low = b24low;
+        sLast.encDelta = encDelta;
+        sLast.btn24Click = detectedClick;
         outStatus = sLast;
-        return changed || (encDelta != 0);
+        return changed || (encDelta != 0) || (detectedClick != Btn24Click::None);
     }
 }

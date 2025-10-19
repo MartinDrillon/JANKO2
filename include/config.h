@@ -149,7 +149,7 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 //   DEBUG_ADC_MONITOR_CHANNEL: index channel (0..15)
 //   DEBUG_ADC_MONITOR_INTERVAL_MS : période d'impression
 #ifndef DEBUG_ADC_MONITOR
-#define DEBUG_ADC_MONITOR 1
+#define DEBUG_ADC_MONITOR 0
 #endif
 #ifndef DEBUG_ADC_MONITOR_MUX
 #define DEBUG_ADC_MONITOR_MUX 3
@@ -161,11 +161,23 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 #define DEBUG_ADC_MONITOR_INTERVAL_MS 1
 #endif
 
+// === Velocity Gamma Monitor ===
+// Print velocity gamma value to Serial monitor whenever it changes
+#ifndef DEBUG_GAMMA_MONITOR
+#define DEBUG_GAMMA_MONITOR 1
+#endif
+
+// === LED brightness ===
+// Brightness value for NeoPixel strip (0-255)
+static constexpr uint8_t kLedBrightness = 120;
+
 // === Velocity curve shaping ===
 // Exposant appliqué à la valeur normalisée (0..1) avant mapping 1..127.
 // <1.0 rend les faibles vitesses plus sensibles (valeurs de vélocité plus élevées plus tôt)
 // >1.0 compresse le bas et étire le haut.
-static constexpr float kVelocityGamma = 0.20f; // Option A proposée
+// Default: 0.20f; adjustable at runtime via encoder (±0.02 per detent).
+// Double-click encoder button to save to EEPROM; triple-click to reset to 0.20f.
+static constexpr float kVelocityGammaDefault = 0.20f;
 
 // === Re-press detection (ThresholdMed) ===
 // Quand une touche est relâchée (sous ThresholdRelease) mais ne revient pas jusqu'à ThresholdLow,
