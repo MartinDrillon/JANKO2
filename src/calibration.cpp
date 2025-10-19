@@ -12,6 +12,7 @@ uint8_t  gHighFastSeen[N_MUX][N_CH];
 // === Phase2: histogrammes pour médiane Low ===
 static uint16_t *gHist = nullptr; // allocation unique N_MUX*N_CH*1024 entries (lazy)
 static uint32_t gCountPerKey[N_MUX][N_CH];
+static bool gKeyPressedInPhase2[N_MUX][N_CH]; // Track which keys were pressed during Phase 2
 enum class CalibState { STATIC_INIT, COLLECT_LOW, FINALIZE_LOW, RUN };
 static CalibState gState = CalibState::STATIC_INIT;
 static uint32_t gCollectStartMs = 0;
@@ -165,8 +166,13 @@ void calibrationServiceFSM(uint32_t nowMs, bool button24Low) {
 			if (!button24Low) {
 				// Wait until median window auto-finalizes in calibrationService()
 				if (!calibrationIsCollecting()) {
-					// Move to Phase2: reset peaks and show solid blue (reuse LEDs with blue tint via white + blue)
-					for (uint8_t m=0;m<N_MUX;m++) for (uint8_t c=0;c<N_CH;c++) gPhase2Peak[m][c] = gThLow[m][c];
+					// Move to Phase2: reset peaks and pressed-key tracking
+					for (uint8_t m=0;m<N_MUX;m++) {
+						for (uint8_t c=0;c<N_CH;c++) {
+							gPhase2Peak[m][c] = gThLow[m][c];
+							gKeyPressedInPhase2[m][c] = false; // Reset tracking
+						}
+					}
 					// Enable solid blue override on all LEDs during Phase 2
 					setCalibrationLeds(false);
 					simpleLedsSetCalibrationBlue(true);
@@ -175,14 +181,21 @@ void calibrationServiceFSM(uint32_t nowMs, bool button24Low) {
 			}
 			break; }
 		case UX::Phase2: {
-			// During Phase2, host should call calibrationFrameIngest each frame already; we update peaks from current workingValues
-			// Collect max abs deviation from Low
-			for (uint8_t m=0;m<N_MUX;m++) for (uint8_t c=0;c<N_CH;c++) {
-				uint16_t low = gThLow[m][c];
-				uint16_t v = g_acquisition.workingValues[m][c];
-				int dv = (int)v - (int)low;
-				int bestDv = (int)gPhase2Peak[m][c] - (int)low;
-				if (abs(dv) > abs(bestDv)) gPhase2Peak[m][c] = v;
+			// During Phase2, update peaks from current workingValues and mark pressed keys
+			for (uint8_t m=0;m<N_MUX;m++) {
+				for (uint8_t c=0;c<N_CH;c++) {
+					uint16_t low = gThLow[m][c];
+					uint16_t v = g_acquisition.workingValues[m][c];
+					int dv = (int)v - (int)low;
+					int bestDv = (int)gPhase2Peak[m][c] - (int)low;
+					if (abs(dv) > abs(bestDv)) {
+						gPhase2Peak[m][c] = v;
+					}
+					// Mark key as pressed if swing exceeds minimum threshold
+					if (abs(dv) >= (int)Calib::kMinSwingCounts) {
+						gKeyPressedInPhase2[m][c] = true;
+					}
+				}
 			}
 			if (button24Low) {
 				gUx = UX::HoldEnd; gUxT0 = nowMs;
@@ -191,34 +204,52 @@ void calibrationServiceFSM(uint32_t nowMs, bool button24Low) {
 		case UX::HoldEnd:
 			if (!button24Low) { gUx = UX::Phase2; break; }
 			if (nowMs - gUxT0 >= Calib::kHoldToFinishMs) {
-				// Finalize High from captured peaks, with fallback if swing too small
-				for (uint8_t m=0;m<N_MUX;m++) for (uint8_t c=0;c<N_CH;c++) {
-					uint16_t lowPrev = gThLow[m][c];
-					uint16_t peak = gPhase2Peak[m][c];
-					int s = ((int)peak >= (int)lowPrev) ? +1 : -1; // press direction
-					int D = abs((int)peak - (int)lowPrev);
-					// Recompute Low using polarity and percent margin (based on estimated median)
-					int median_est = (int)lowPrev - (int)CalibCfg::kLowMarginMinCounts; // from finalizeMedian logic
-					int lowMargin = std::max<int>((int)CalibCfg::kLowMarginMinCounts, (int)(CalibCfg::kLowMarginPct * (float)D));
-					int lowNew = median_est + s * lowMargin;
-					if (lowNew < 0) lowNew = 0; if (lowNew > 1023) lowNew = 1023;
-					gThLow[m][c] = (uint16_t)lowNew;
+				// Finalize: update Low for ALL keys, but High ONLY for pressed keys
+				for (uint8_t m=0;m<N_MUX;m++) {
+					for (uint8_t c=0;c<N_CH;c++) {
+						uint16_t lowPrev = gThLow[m][c];
+						uint16_t peak = gPhase2Peak[m][c];
+						int s = ((int)peak >= (int)lowPrev) ? +1 : -1; // press direction
+						int D = abs((int)peak - (int)lowPrev);
+						
+						// ALWAYS recompute Low using polarity and percent margin
+						int median_est = (int)lowPrev - (int)CalibCfg::kLowMarginMinCounts;
+						int lowMargin = std::max<int>((int)CalibCfg::kLowMarginMinCounts, (int)(CalibCfg::kLowMarginPct * (float)D));
+						int lowNew = median_est + s * lowMargin;
+						if (lowNew < 0) lowNew = 0; if (lowNew > 1023) lowNew = 1023;
+						gThLow[m][c] = (uint16_t)lowNew;
 
-					// Compute High target
-					if (D < (int)Calib::kMinSwingForHigh) {
-						// Too small swing: enforce minimum around Low in the press direction
-						int target = lowNew + s * (int)Calib::kMinSwingCounts;
-						if (target < 0) target = 0; if (target > 1023) target = 1023;
-						gThHigh[m][c] = (uint16_t)target;
-					} else {
-						int margin = std::max<int>((int)CalibCfg::kHighTargetMarginMin, (int)(CalibCfg::kHighTargetMarginPct * (float)D));
-						int target = (int)peak - s * margin;
-						// Enforce minimal swing symmetrical to polarity
-						if (abs(target - lowNew) < (int)Calib::kMinSwingCounts) target = lowNew + s * (int)Calib::kMinSwingCounts;
-						if (target < 0) target = 0; if (target > 1023) target = 1023;
-						gThHigh[m][c] = (uint16_t)target;
+						// Update High ONLY if key was pressed during Phase 2
+						if (gKeyPressedInPhase2[m][c]) {
+							if (D < (int)Calib::kMinSwingForHigh) {
+								// Too small swing: enforce minimum around Low in the press direction
+								int target = lowNew + s * (int)Calib::kMinSwingCounts;
+								if (target < 0) target = 0; if (target > 1023) target = 1023;
+								gThHigh[m][c] = (uint16_t)target;
+							} else {
+								int margin = std::max<int>((int)CalibCfg::kHighTargetMarginMin, (int)(CalibCfg::kHighTargetMarginPct * (float)D));
+								int target = (int)peak - s * margin;
+								// Enforce minimal swing symmetrical to polarity
+								if (abs(target - lowNew) < (int)Calib::kMinSwingCounts) target = lowNew + s * (int)Calib::kMinSwingCounts;
+								if (target < 0) target = 0; if (target > 1023) target = 1023;
+								gThHigh[m][c] = (uint16_t)target;
+							}
+						}
+						// If key was NOT pressed, gThHigh[m][c] keeps its previous value from EEPROM
 					}
 				}
+				
+				// Count and report how many keys were calibrated
+#ifdef DEBUG_GAMMA_MONITOR
+				uint16_t calibratedCount = 0;
+				for (uint8_t m=0;m<N_MUX;m++) {
+					for (uint8_t c=0;c<N_CH;c++) {
+						if (gKeyPressedInPhase2[m][c]) calibratedCount++;
+					}
+				}
+				Serial.printf("[Calibration] Completed: %u keys calibrated (High updated), all keys Low updated\n", calibratedCount);
+#endif
+				
 				// Save to EEPROM and exit calibration
 				calibrationSaveToEeprom();
 				setCalibrationLeds(false);
