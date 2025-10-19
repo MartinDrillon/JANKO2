@@ -2,9 +2,18 @@
 
 namespace IoState {
     static bool sInited = false;
-    static RockerStatus sLast{true, true, 0, false, 0};
+    static RockerStatus sLast{true, true, 0, false, 0, ButtonClick::None};
     static uint32_t sLastPollMs = 0;
     static constexpr uint32_t kPollPeriodMs = 10; // ~100 Hz
+    
+    // Encoder button click detection
+    static bool sEncButtonLastState = true; // HIGH (released) initially
+    static uint32_t sEncButtonPressTime = 0;
+    static uint32_t sEncButtonReleaseTime = 0;
+    static uint8_t sEncButtonClickCount = 0;
+    static constexpr uint32_t kClickTimeoutMs = 300; // max time between clicks
+    static constexpr uint32_t kDebounceMs = 20; // debounce delay
+    
     // Quadrature decoder state
     static volatile int16_t sEncAccum = 0;
     static volatile uint8_t sEncState = 0; // 2-bit: (A<<1)|B
@@ -55,20 +64,24 @@ namespace IoState {
         bool p5 = digitalReadFast(kPinRocker5);
         pinMode(kPinButton24, INPUT_PULLUP);
         bool b24low = (digitalReadFast(kPinButton24) == LOW);
-    // Encoder inputs as pullups (A/B)
-    pinMode(kPinEncA, INPUT_PULLUP);
-    pinMode(kPinEncB, INPUT_PULLUP);
-    uint8_t a = digitalReadFast(kPinEncA) ? 1 : 0;
-    uint8_t b = digitalReadFast(kPinEncB) ? 1 : 0;
-    sEncState = (a << 1) | b;
-    sEncAccum = 0;
-    attachInterrupt(digitalPinToInterrupt(kPinEncA), onEncChange, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(kPinEncB), onEncChange, CHANGE);
+        // Encoder button as pullup
+        pinMode(kPinEncButton, INPUT_PULLUP);
+        sEncButtonLastState = digitalReadFast(kPinEncButton);
+        // Encoder inputs as pullups (A/B)
+        pinMode(kPinEncA, INPUT_PULLUP);
+        pinMode(kPinEncB, INPUT_PULLUP);
+        uint8_t a = digitalReadFast(kPinEncA) ? 1 : 0;
+        uint8_t b = digitalReadFast(kPinEncB) ? 1 : 0;
+        sEncState = (a << 1) | b;
+        sEncAccum = 0;
+        attachInterrupt(digitalPinToInterrupt(kPinEncA), onEncChange, CHANGE);
+        attachInterrupt(digitalPinToInterrupt(kPinEncB), onEncChange, CHANGE);
         sLast.pin4High = p4;
         sLast.pin5High = p5;
         sLast.transpose = calcTranspose(p4, p5);
         sLast.button24Low = b24low;
         sLast.encDelta = 0;
+        sLast.encButtonClick = ButtonClick::None;
         sLastPollMs = millis();
         sInited = true;
     }
@@ -84,25 +97,59 @@ namespace IoState {
         bool p5 = digitalReadFast(kPinRocker5);
         bool b24low = (digitalReadFast(kPinButton24) == LOW);
         int8_t tr = calcTranspose(p4, p5);
-    // Drain accumulated quadrature steps since last poll (atomically)
-    int16_t acc;
-    noInterrupts();
-    acc = sEncAccum;
-    // Keep remainder so partial transitions aren't lost between polls
-    sEncAccum = (int16_t)(acc % 4);
-    interrupts();
-    // Each valid transition gives +/-1; typical encoders produce 4 transitions per detent.
-    // Convert to detents (round toward zero)
-    int8_t encDelta = (int8_t)(acc / 4);
+        
+        // Encoder button click detection with debouncing
+        bool encButtonState = digitalReadFast(kPinEncButton);
+        ButtonClick detectedClick = ButtonClick::None;
+        
+        // Detect press (HIGH -> LOW transition)
+        if (sEncButtonLastState == true && encButtonState == false) {
+            sEncButtonPressTime = nowMs;
+        }
+        // Detect release (LOW -> HIGH transition) with debounce
+        else if (sEncButtonLastState == false && encButtonState == true) {
+            uint32_t pressDuration = nowMs - sEncButtonPressTime;
+            if (pressDuration >= kDebounceMs) { // valid press (not bounce)
+                sEncButtonClickCount++;
+                sEncButtonReleaseTime = nowMs;
+            }
+        }
+        
+        // Check for click timeout to finalize click count
+        if (sEncButtonClickCount > 0 && (nowMs - sEncButtonReleaseTime) > kClickTimeoutMs) {
+            // Finalize the click count
+            if (sEncButtonClickCount == 1) {
+                detectedClick = ButtonClick::Single;
+            } else if (sEncButtonClickCount == 2) {
+                detectedClick = ButtonClick::Double;
+            } else if (sEncButtonClickCount >= 3) {
+                detectedClick = ButtonClick::Triple;
+            }
+            sEncButtonClickCount = 0; // reset
+        }
+        
+        sEncButtonLastState = encButtonState;
+        
+        // Drain accumulated quadrature steps since last poll (atomically)
+        int16_t acc;
+        noInterrupts();
+        acc = sEncAccum;
+        // Keep remainder so partial transitions aren't lost between polls
+        sEncAccum = (int16_t)(acc % 4);
+        interrupts();
+        // Each valid transition gives +/-1; typical encoders produce 4 transitions per detent.
+        // Convert to detents (round toward zero)
+        int8_t encDelta = (int8_t)(acc / 4);
         bool changed = (p4 != sLast.pin4High) || (p5 != sLast.pin5High) || (tr != sLast.transpose) || (b24low != sLast.button24Low);
-        if (changed || encDelta != 0) {
+        if (changed || encDelta != 0 || detectedClick != ButtonClick::None) {
             sLast.pin4High = p4;
             sLast.pin5High = p5;
             sLast.transpose = tr;
             sLast.button24Low = b24low;
             sLast.encDelta = encDelta;
+            sLast.encButtonClick = detectedClick;
         }
         outStatus = sLast;
-        return changed || (encDelta != 0);
+        return changed || (encDelta != 0) || (detectedClick != ButtonClick::None);
     }
 }

@@ -149,7 +149,7 @@ static constexpr uint16_t kDuplicateTolerance = 1;
 //   DEBUG_ADC_MONITOR_CHANNEL: index channel (0..15)
 //   DEBUG_ADC_MONITOR_INTERVAL_MS : période d'impression
 #ifndef DEBUG_ADC_MONITOR
-#define DEBUG_ADC_MONITOR 1
+#define DEBUG_ADC_MONITOR 0
 #endif
 #ifndef DEBUG_ADC_MONITOR_MUX
 #define DEBUG_ADC_MONITOR_MUX 3
@@ -174,6 +174,12 @@ static constexpr float kVelocityGamma = 0.20f; // Option A proposée
 static constexpr uint16_t kRepressHyst = 3;
 // Nombre d'échantillons consécutifs au-dessus de (vallée + hystérésis) pour valider la remontée
 static constexpr uint8_t  kRepressStableCount = 1; // passer à 2 si besoin de plus d'anti-rebond
+
+// === LED Brightness Configuration ===
+// Global brightness for both LED strip and single LED (0..255)
+// 0 = off, 255 = maximum brightness
+// Adjust this value to control the default LED intensity
+static constexpr uint8_t kLedBrightness = 80; // Default: 80/255 (~31% brightness)
 
 // === Calibration relative (pourcentages globaux) ===
 // Ces constantes pilotent l'adaptation des seuils par touche à partir des valeurs brutes Low/High.

@@ -1,4 +1,5 @@
 #include "simple_leds.h"
+#include "config.h"
 #include <Adafruit_NeoPixel.h>
 
 // Pins (adapter si besoin)
@@ -19,8 +20,9 @@ static bool g_button24Low_last = false;
 static uint8_t g_cachedRockerState = 0; // 0=off, 1=pin5, 2=both, 3=pin4
 static uint8_t g_lastRockerState = 0;
 static bool g_needFlush = false;        // un flush est nécessaire
-static uint8_t g_brightness = 80;       // default logical brightness (0..255)
+static uint8_t g_brightness = kLedBrightness; // default from config.h
 static bool g_calibBlueOverride = false; // when true, Phase 2: all LEDs solid blue
+static bool g_firstFlush = true;        // Force first flush without conditions
 
 // LED simple sur pin 12 sera traitée en sortie numérique + couleur fixe verte par R/G/B discret (utiliser RGB discret ou NeoPixel ?)
 // Supposons LED unique standard: ON = vert -> si LED RGB séparée faudrait lib; ici on simplifie: on allume HIGH.
@@ -28,29 +30,35 @@ static bool g_calibBlueOverride = false; // when true, Phase 2: all LEDs solid b
 void simpleLedsInit() {
     pinMode(PIN_INPUT, INPUT);
     single.begin();
+    single.setBrightness(kLedBrightness); // Apply brightness from config
     single.setPixelColor(0, single.Color(0, 50, 0)); // vert fixe
     single.show();
 
     strip.begin();
+    strip.setBrightness(kLedBrightness); // Apply brightness from config
     strip.clear();
     strip.show();
+    
+    // Small delay to ensure NeoPixel hardware is ready
+    delayMicroseconds(100); // 100µs should be enough for WS2812
+    
+    // Initialize state variables - set "last" states to invalid values to force initial update
     g_cachedColor = 0;
-    g_lastPushedColor = 0;
+    g_lastPushedColor = 0xFFFFFFFF; // Force different from cached to trigger first flush
     g_cachedRockerState = 0;
-    g_lastRockerState = 0;
+    g_lastRockerState = 0xFF; // Force different from cached
     g_button24Low_cached = false;
-    g_button24Low_last = false;
-    g_needFlush = false;
-    g_brightness = 80;
+    g_button24Low_last = true; // Force different from cached
+    g_needFlush = true; // Mark flush needed
+    g_brightness = kLedBrightness; // Initialize from config.h
     g_calibBlueOverride = false;
     
-    // Force un refresh initial pour que toutes les LEDs s'allument correctement
-    // Lecture de l'état réel de PIN_INPUT pour initialiser g_cachedColor
+    // Read actual pin states to initialize cached colors
     int state = digitalRead(PIN_INPUT);
     g_cachedColor = (state == HIGH) ? strip.Color(0,0,80) : 0;
-    g_needFlush = true;
     
-    // Force le flush initial pour afficher l'état correct dès le démarrage
+    // Force initial flush to display correct state at startup
+    // This ensures LEDs light up immediately after power-on or firmware flash
     simpleLedsFrameFlush();
 }
 
@@ -61,18 +69,18 @@ void simpleLedsTask() {
 }
 
 void setCalibrationLeds(bool enabled) {
+    // NOTE: This function directly manipulates strip pixels and calls show()
+    // It bypasses the normal cached state system and should only be used
+    // during calibration mode when normal LED updates are suspended
     if (enabled) {
         // Turn on LEDs 2, 3, 4 in red (indices 2, 3, 4 - last 3 LEDs of the 5-LED strip)
         strip.setPixelColor(2, strip.Color(255, 0, 0)); // Red
         strip.setPixelColor(3, strip.Color(255, 0, 0)); // Red
         strip.setPixelColor(4, strip.Color(255, 0, 0)); // Red
-    } else {
-        // Turn off calibration LEDs
-        strip.setPixelColor(2, 0);
-        strip.setPixelColor(3, 0);
-        strip.setPixelColor(4, 0);
+        strip.show();
     }
-    strip.show();
+    // When disabled, do nothing - let normal LED system handle it
+    // This prevents overwriting the rocker indicator LEDs at startup
 }
 
 void simpleLedsSetCalibrationBlue(bool enabled) {
@@ -107,9 +115,12 @@ void simpleLedsSetRocker(bool pin4High, bool pin5High) {
 }
 
 void simpleLedsFrameFlush() {
-    if (!g_needFlush && g_cachedColor == g_lastPushedColor && g_cachedRockerState == g_lastRockerState && g_button24Low_cached == g_button24Low_last && !g_calibBlueOverride) {
+    // Force first flush to ensure LEDs display at startup
+    if (!g_firstFlush && !g_needFlush && g_cachedColor == g_lastPushedColor && g_cachedRockerState == g_lastRockerState && g_button24Low_cached == g_button24Low_last && !g_calibBlueOverride) {
         return; // rien à faire
     }
+    g_firstFlush = false; // Clear first flush flag after first call
+    
     // Apply brightness globally
     strip.setBrightness(g_brightness);
     if (g_calibBlueOverride) {

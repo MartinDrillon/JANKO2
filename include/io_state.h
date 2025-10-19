@@ -10,6 +10,15 @@ namespace IoState {
     // Encoder pins - Quadrature A/B
     constexpr uint8_t kPinEncA = 26; // channel A
     constexpr uint8_t kPinEncB = 28; // channel B
+    // Encoder button pin (for click detection)
+    constexpr uint8_t kPinEncButton = 27; // encoder button
+
+    enum class ButtonClick : uint8_t {
+        None = 0,
+        Single = 1,
+        Double = 2,
+        Triple = 3
+    };
 
     struct RockerStatus {
         bool pin4High;
@@ -17,6 +26,7 @@ namespace IoState {
         int8_t transpose; // -12, 0, +12
         bool button24Low; // true when pressed (LOW)
         int8_t encDelta;  // -n..+n steps since last poll (CCW negative, CW positive)
+        ButtonClick encButtonClick; // encoder button click detection
     };
 
     // Initialize pins (INPUT_PULLUP). Call once in setup.

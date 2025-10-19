@@ -105,4 +105,51 @@ namespace EepromStore {
     // Teensy EEPROM writes are applied immediately; no commit required
         free(buf);
     }
+
+    // === Velocity Gamma Storage ===
+    // Stored at a fixed offset after calibration data with simple validation
+    namespace {
+        constexpr uint32_t kGammaMagic = 0x47414D4D; // 'GAMM'
+        constexpr size_t kGammaOffset = sizeof(Header) + (N_MUX * N_CH * sizeof(uint16_t) * 2);
+        
+        struct GammaRecord {
+            uint32_t magic;
+            float gamma;
+            uint32_t crc; // CRC of gamma value
+        } __attribute__((packed));
+    }
+
+    bool loadVelocityGamma(float& outGamma) {
+        GammaRecord rec{};
+        EEPROM.get(kGammaOffset, rec);
+        
+        // Validate magic
+        if (rec.magic != kGammaMagic) {
+            return false;
+        }
+        
+        // Validate CRC
+        uint32_t crc = crc32_buf((const uint8_t*)&rec.gamma, sizeof(float));
+        if (crc != rec.crc) {
+            return false;
+        }
+        
+        // Sanity check range (0.0 to 2.0)
+        if (rec.gamma < 0.0f || rec.gamma > 2.0f) {
+            return false;
+        }
+        
+        outGamma = rec.gamma;
+        return true;
+    }
+
+    void saveVelocityGamma(float gamma) {
+        GammaRecord rec{};
+        rec.magic = kGammaMagic;
+        rec.gamma = gamma;
+        rec.crc = crc32_buf((const uint8_t*)&rec.gamma, sizeof(float));
+        
+        EEPROM.put(kGammaOffset, rec);
+        // Teensy EEPROM writes are applied immediately
+    }
 }

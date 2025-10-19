@@ -20,6 +20,11 @@
 // === ADC Instance ===
 static ADC gAdc;
 
+// === Global Velocity Gamma ===
+// Runtime-adjustable velocity curve exponent (saved to EEPROM)
+// Default value from config.h, adjustable via encoder
+float g_velocityGamma = kVelocityGamma;
+
 // === Fast MUX Channel Switching LUT ===
 // Pre-calculated GPIO states for each channel (0-15)
 struct ChannelGPIO {
@@ -259,6 +264,16 @@ void setup() {
     // Initialize I/O state (rocker pins)
     IoState::init();
     
+    // Apply initial rocker state to LEDs immediately after init
+    // This ensures rocker indicator LEDs light up at power-on
+    {
+        IoState::RockerStatus initialState;
+        IoState::update(millis(), initialState); // Read initial state
+        simpleLedsSetRocker(initialState.pin4High, initialState.pin5High);
+        simpleLedsSetButton24(initialState.button24Low);
+        simpleLedsFrameFlush(); // Apply changes immediately
+    }
+    
     // Calibration LEDs no longer used (ensure off)
     setCalibrationLeds(false);
 
@@ -277,6 +292,19 @@ void setup() {
     MidiOut::init();
     // Init static thresholds (Phase1 dynamique)
     calibrationInitStatic();
+    
+    // Load velocity gamma from EEPROM if available
+    float loadedGamma;
+    if (EepromStore::loadVelocityGamma(loadedGamma)) {
+        g_velocityGamma = loadedGamma;
+        Serial.print("VelocityGamma loaded from EEPROM: ");
+        Serial.println(g_velocityGamma, 3);
+    } else {
+        // Use default from config.h
+        Serial.print("VelocityGamma using default: ");
+        Serial.println(g_velocityGamma, 3);
+    }
+    
     // Ne pas démarrer de calibration au boot: conserver les seuils EEPROM
     enableCycleCounter();
     
@@ -298,10 +326,12 @@ void loop() {
     simpleLedsUpdateInputState();
     if (kContinuousScan) {
         // Pas d'attente: enchaîne directement
-        uint32_t t0 = micros();
-        scanChannelDualADC(currentChannel);
-        uint32_t t1 = micros();
 #if DEBUG_PROFILE_SCAN
+        uint32_t t0 = micros();
+#endif
+        scanChannelDualADC(currentChannel);
+#if DEBUG_PROFILE_SCAN
+        uint32_t t1 = micros();
         uint32_t chDur = t1 - t0;
         gAccumChannelTimeUs += chDur;
         gChannelSamples++;
@@ -372,10 +402,12 @@ void loop() {
         }
     } else if (nowUs - lastScanUs >= kScanIntervalMicros) {
         lastScanUs = nowUs;
-        uint32_t t0 = micros();
-        scanChannelDualADC(currentChannel);
-        uint32_t t1 = micros();
 #if DEBUG_PROFILE_SCAN
+        uint32_t t0 = micros();
+#endif
+        scanChannelDualADC(currentChannel);
+#if DEBUG_PROFILE_SCAN
+        uint32_t t1 = micros();
         uint32_t chDur = t1 - t0;
         gAccumChannelTimeUs += chDur;
         gChannelSamples++;
@@ -454,17 +486,32 @@ void loop() {
         noteMapSetTranspose(rs.transpose);
         simpleLedsSetRocker(rs.pin4High, rs.pin5High);
         simpleLedsSetButton24(rs.button24Low);
-        // Encoder-driven brightness control
+        
+        // Encoder-driven velocity gamma control
         if (rs.encDelta != 0) {
-            int v = (int)simpleLedsGetBrightness() + (int)rs.encDelta * 8; // step of 8 per detent
-            // Clamp to 0..255 without ambiguous indentation
-            if (v < 0) {
-                v = 0;
+            // Adjust velocity gamma by 0.01 per detent
+            g_velocityGamma += (float)rs.encDelta * 0.01f;
+            // Clamp to 0.0..2.0 range
+            if (g_velocityGamma < 0.0f) {
+                g_velocityGamma = 0.0f;
             }
-            if (v > 255) {
-                v = 255;
+            if (g_velocityGamma > 2.0f) {
+                g_velocityGamma = 2.0f;
             }
-            simpleLedsSetBrightness((uint8_t)v);
+            // Print current value for user feedback
+            Serial.print("VelocityGamma: ");
+            Serial.println(g_velocityGamma, 3);
+        }
+        
+        // Encoder button clicks: Double = save to EEPROM, Triple = restore default
+        if (rs.encButtonClick == IoState::ButtonClick::Double) {
+            EepromStore::saveVelocityGamma(g_velocityGamma);
+            Serial.print("VelocityGamma saved to EEPROM: ");
+            Serial.println(g_velocityGamma, 3);
+        } else if (rs.encButtonClick == IoState::ButtonClick::Triple) {
+            g_velocityGamma = kVelocityGamma; // restore default from config.h
+            Serial.print("VelocityGamma restored to default: ");
+            Serial.println(g_velocityGamma, 3);
         }
     }
 
