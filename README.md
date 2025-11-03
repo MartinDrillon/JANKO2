@@ -19,16 +19,16 @@ Sous chaque touche, un capteur hall génère le voltage relatif à la position d
 
 La difficulté est de suivre simultanément et avec précision la position des 120 touches. Avec quelques multiplexeurs, buffers et autres, j’arrive à environ 13 000 échantillons de position par seconde et par touche. Au delà, les ADC du Teensy ne suivent plus. 
 
-Le programme a été vibe codé. Je crois que c’est moche, mais ça fonctionne. Des ajustements doivent encore être faits au niveau de la calibration des touches, de la courbe de vélocité, etc.
+Le programme a été vibe codé. Ça fonctionne. Des ajustements doivent encore être faits au niveau de la calibration des touches, de la courbe de vélocité, etc.
 
 ![Clavicore 0.1 PCB](photos/Clavicore_0_1_PCB.jpg)
 
 ## DÉMONSTRATION
 
-Après deux semaines de pratique.  C’est approximatif, il y a encore du boulot, mais je n’ai jamais vraiment fait de musique avant. Je sais que se péter les noix à faire un clavier dynamique pour jouer du clavecin, c’est con.
+Après deux semaines de pratique.  C’est approximatif, il y a encore du boulot, mais je n’ai jamais vraiment fait de musique avant. Je sais qu’il n’y avait pas besoin de s’embêter autant avec un clavier dynamique pour jouer du clavecin.
 https://www.youtube.com/shorts/t3_tYI92ahw
 
-Pour la démonstration de la dynamique de jeu. Désolé, le son est moche. Je referai avec un grand beau piano un de ces jours. 
+Pour la démonstration de la dynamique de jeu. Désolé, le son est moche. Je referai avec un beau piano un de ces jours. 
 https://youtube.com/shorts/Zl-sIEAEMYA?feature=share
 
 Pour l’esthétique. C’est du plaqué or. J’ai vectorisé le texte du couvercle d’un clavecin ancien et diverses autres images.  
