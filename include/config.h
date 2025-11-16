@@ -91,10 +91,10 @@ static constexpr uint8_t kMidiChannel = 1; // MIDI channel (1-16)
 static constexpr uint32_t kScanIntervalMicros = 0;   // 1µs par channel (peut être mis à 0)
 // Délai après changement des lignes d'adresse MUX avant le premier read synchronisé.
 // Mettre à 0 pour tester la limite physique (le 4067 ajoute typiquement ~100ns tSW + source impedance).
-static constexpr uint32_t kSettleMicros = 0;         // 1µs actuel; essayer 0 si pas de "cloned readings"
+static constexpr uint32_t kSettleMicros = 1;         // 1µs actuel; essayer 0 si pas de "cloned readings"
 // Délai optionnel entre chaque paire synchronisée (4 paires * 2 ADC). 1 supprimait des duplications.
 // Mettre à 0 pour vitesse max; si valeurs dupliquées réapparaissent, revenir à 1.
-static constexpr uint32_t kPerPairDelayMicros = 0;   // Délai en microsecondes (grossier). Si 0 on peut utiliser kPerPairDelayCycles.
+static constexpr uint32_t kPerPairDelayMicros = 1;   // Délai en microsecondes (grossier). Si 0 on peut utiliser kPerPairDelayCycles.
 // Délai ultra-fin en CYCLES CPU (Teensy 4.1 @600 MHz ⇒ 1 µs ≈ 600 cycles). Permet <1 µs.
 // Utilisé uniquement si kPerPairDelayMicros == 0 et kPerPairDelayCycles > 0.
 static constexpr uint32_t kPerPairDelayCycles = 150;   // Exemple: 120 (~0.2 µs), 300 (~0.5 µs), 600 (~1.0 µs)

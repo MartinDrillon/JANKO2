@@ -168,6 +168,21 @@ static inline void enableCycleCounter() {
 }
 static inline uint32_t readCycleCounter() { return ARM_DWT_CYCCNT; }
 
+// === Physical MUX scanning order configuration ===
+// Maps physical read index (0-7) to logical note_map index
+// This allows reordering the physical ADC read sequence without touching note_map
+// Current order: reads values[0..7] in hardware sequence, maps to note_map[0..7]
+static constexpr uint8_t kPhysicalMuxReadOrder[8] = {
+    3,  // Read index 0 (pin 41, ADC1) -> note_map[0] = MUX0
+    0,  // Read index 1 (pin 40, ADC1) -> note_map[1] = MUX1
+    1,  // Read index 2 (pin 39, ADC1) -> note_map[2] = MUX2
+    2,  // Read index 3 (pin 38, ADC1) -> note_map[3] = MUX3
+    4,  // Read index 4 (pin 20, ADC0) -> note_map[4] = MUX4
+    5,  // Read index 5 (pin 21, ADC0) -> note_map[5] = MUX5
+    6,  // Read index 6 (pin 22, ADC0) -> note_map[6] = MUX6
+    7   // Read index 7 (pin 23, ADC0) -> note_map[7] = MUX7
+};
+
 // --- Optimized Scanning with LUT and Synchronized ADC ---
 void scanChannelDualADC(uint8_t channel) {
     // Optional debug channel freeze
@@ -219,12 +234,13 @@ void scanChannelDualADC(uint8_t channel) {
             }
         }
 
-    // Process all 8 keys (always active; no calibration phase)
-    for (uint8_t mux = 0; mux < 8; mux++) {
-        VelocityEngine::processKey(mux, channel, values[mux], timestamp_us);
+    // Process all 8 keys using physical read order mapping
+    for (uint8_t readIndex = 0; readIndex < 8; readIndex++) {
+        uint8_t logicalMux = kPhysicalMuxReadOrder[readIndex];
+        VelocityEngine::processKey(logicalMux, channel, values[readIndex], timestamp_us);
 #if DEBUG_ADC_MONITOR
         // Met à jour le moniteur si c'est la combinaison surveillée
-        AdcMonitor::updateIfMatch(mux, channel, values[mux], timestamp_us);
+        AdcMonitor::updateIfMatch(logicalMux, channel, values[readIndex], timestamp_us);
 #endif
     }
 
