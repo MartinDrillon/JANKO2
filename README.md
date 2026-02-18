@@ -3,9 +3,9 @@
 Le Clavicore est un contrôleur midi sensible à la vélocité. Il est basé sur la disposition Janko. 
 Il fonctionne grâce à des interrupteurs MX magnétiques et un Teensy 4.1.  
 
----
+![Clavicore](photo/Clavicore.jpg)
 
-/photo/Clavicore.jpg
+---
 
 ## JANKO LAYOUT
 
@@ -15,17 +15,16 @@ https://en.wikipedia.org/wiki/Jank%C3%B3_keyboard
 
 ## FONCTIONNEMENT
 
-La position des touches est détectée grâce à des capteurs halls. Huit multiplexeurs permettent de transmettre le signal émis par les 120 capteurs au Teensy. Ses deux ADC échantillonnent chaque touche en 10 bit à 13 kHz environ : la position de chaque touche est suivi en direct. Plus la touche est enfoncé vite, plus le niveau sonore associé au signal midi est élevé.  
+La position des touches est suivie grâce à des capteurs halls. Huit multiplexeurs permettent de transmettre le voltage émis par les 120 capteurs au Teensy. Ses deux ADC échantillonnent chaque touche en 10 bit à 13 kHz environ. Plus un touche est enfoncé vite, plus le niveau sonore associé au signal midi est élevé.
 
-Le schéma est visible ici : /schema/JANKO_KICAD_5.pdf
-
+Le schéma est visible ici : [Schéma du clavicore](schema/JANKO_KICAD_5.pdf)
 
 ## DÉMONSTRATION
 
-Pour la démonstration de la dynamique de jeu. Je referai avec un sample de beau piano un de ces jours. 
+Pour la démonstration de la dynamique de jeu.
 https://youtube.com/shorts/Zl-sIEAEMYA?feature=share
 
-Après deux semaines de pratique.  C’est approximatif mais je n’ai jamais vraiment fait de musique avant. Je sais qu’il n’y avait pas besoin de s’embêter avec un clavier dynamique si c’est pour jouer du clavecin.
+Après deux semaines de pratique. Je ne suis pas musicien. Je sais qu’il n’y avait pas besoin de faire un clavier dynamique si c’est pour jouer du clavecin.
 https://www.youtube.com/shorts/t3_tYI92ahw
 
 Pour l’esthétique. C’est du plaqué or. J’ai vectorisé le texte du couvercle d’un clavecin ancien et diverses autres images.  
@@ -35,10 +34,7 @@ https://youtube.com/shorts/kKriU0rGM7M?feature=share
 
 * Faire un vrais boitier
 * Recommencer avec une disposition Wiki-Haydn et un STM32 ! 
-* Intégrer quelques instruments directement dans le Teensy, si possible ? Voir un séquenceur, etc. 
-
-
-
+* Intégrer quelques modules de synthé directement dans le Teensy, si possible ? Voir un séquenceur, etc. 
 
 ---
 
