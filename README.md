@@ -3,7 +3,7 @@
 Le Clavicore est un contrôleur midi sensible à la vélocité. Il est basé sur la disposition Janko. 
 Il fonctionne grâce à des interrupteurs MX magnétiques et un Teensy 4.1.  
 
-![Clavicore](photo/Clavicore.jpg)
+![Clavicore](photos/Clavicore.jpg)
 
 ---
 
