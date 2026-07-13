@@ -17,8 +17,8 @@ https://en.wikipedia.org/wiki/Jank%C3%B3_keyboard
 
 La position des touches est suivie grâce à des capteurs halls. Huit multiplexeurs permettent de transmettre le voltage émis par les 120 capteurs au Teensy. Ses deux ADC échantillonnent chaque touche en 10 bit à 11,4 kHz environ. Plus un touche est enfoncé vite, plus le niveau sonore associé au signal midi est élevé.
 
-Une des quatre lignes de sélection du multipleur en jaune, sa sortie en rose : ![SCOP](Images/1000047387.jpg)
-Stabilisation du signal en sortie du multiplexeur après un changement de channel : ![SCOP](Images/1000047388.jpg)
+Une des quatre lignes de sélection du multipleur en jaune, sa sortie en rose : ![SCOP](photos/1000047387.jpg)
+Stabilisation du signal en sortie du multiplexeur après un changement de channel : ![SCOP](photos/1000047388.jpg)
 
 Le schéma du clavicore est disponible ici : 
 [![Schéma du clavicore](photos/schema.png)](schema/JANKO_KICAD_5.pdf) 
