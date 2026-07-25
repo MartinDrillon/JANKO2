@@ -50,8 +50,8 @@ namespace IoState {
 
     static inline int8_t calcTranspose(bool pin4High, bool pin5High) {
         if (pin4High && pin5High) return 0;   // neutral
-        if (pin4High && !pin5High) return -12; // 4 HIGH -> down
-        if (!pin4High && pin5High) return +12; // 5 HIGH -> up
+        if (pin4High && !pin5High) return -1; // 4 HIGH -> down
+        if (!pin4High && pin5High) return +1; // 5 HIGH -> up
         return 0; // both LOW -> neutral
     }
 
